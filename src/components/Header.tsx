@@ -3,7 +3,7 @@ import { Bot } from 'lucide-react';
 
 const Header: React.FC = () => {
   return (
-    <header className="bg-[#3b3950] text-white p-4 shadow-md">
+    <header className="bg-[#2d65dc] text-white p-4 shadow-md">
       <div className="container mx-auto flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <Bot size={32} className="text-white" />

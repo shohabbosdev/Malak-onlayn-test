@@ -198,20 +198,20 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
               <input
                 id="intervalSeconds"
                 type="number"
-                min={5}
+                min={3}
                 max={300}
                 value={quizSettings.intervalSeconds}
                 onChange={(e) => setQuizSettings(prev => ({
                   ...prev,
                   intervalSeconds: Math.min(Math.max(5, parseInt(e.target.value) || 30), 300)
                 }))}
-                className="w-24 bg-[#3b3950] text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-24 bg-[#6a6696] text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
               
               <span className="ml-2 text-gray-400">soniya</span>
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              Minimal: 5 soniya, Maksimal: 300 soniya
+              Minimal: 3 soniya, Maksimal: 300 soniya
             </p>
           </div>
         </div>
@@ -238,7 +238,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
       )}
       
       {testResult && (
-        <div className="mt-6 bg-[#3b3950] rounded-lg p-4">
+        <div className="mt-6 bg-[#b2afd5] rounded-lg p-4">
           <h4 className="text-lg font-medium text-white mb-3">Test natijalari</h4>
           
           <div className="grid grid-cols-2 gap-4">

@@ -49,7 +49,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
               onChange={(e) => setBotToken(e.target.value)}
               disabled={!isEditing}
               placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-              className="w-full bg-[#3b3950] text-white p-2 rounded-r-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+              className="w-full bg-[#17161c] text-white p-2 rounded-r-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
             />
           </div>
           <p className="text-xs text-gray-400 mt-1">Bot tokenini @BotFather orqali olishingiz mumkin</p>

@@ -18,7 +18,7 @@ function App() {
   }, [config]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#3b3950] text-white">
+    <div className="min-h-screen flex flex-col bg-[#414f54] text-white">
       <Header />
       
       <main className="flex-grow container mx-auto px-4 py-8">
