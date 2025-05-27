@@ -138,7 +138,7 @@ class TelegramAPI {
   private sanitizePollQuestion(question: string): string {
     return question
       .replace(/[<>&]/g, '') // HTML belgilarni olib tashlash
-      .substring(0, 300) // Telegram poll savol limiti
+      .substring(0, 150) // Telegram poll savol limiti
       .trim();
   }
 
@@ -323,7 +323,7 @@ export const sendQuizToTelegram = async (
   }
 
   // Interval cheklash (Telegram spam himoyasi uchun)
-  const safeInterval = Math.max(intervalSeconds, 30); // Minimal 30 soniya (poll uchun ham yetarli)
+  const safeInterval = Math.max(intervalSeconds, 15); // Minimal 30 soniya (poll uchun ham yetarli)
 
   const telegramAPI = new TelegramAPI(config.botToken);
   const quizManager = new QuizManager(questions);
@@ -347,7 +347,7 @@ export const sendQuizToTelegram = async (
       `🧑‍💻 <b>Test boshlanadi</b>\n\n📝 Savollar soni: <b>${actualCount}</b> ta\n⏱ Har savol uchun vaqt: <b>${safeInterval}</b> soniya\n🔄 Jami vaqt: <b>${Math.ceil((actualCount * safeInterval) / 60)}</b> daqiqa\n\n🚀 Tayyor bo'lsangiz, birinchi savol yuboriladi...`
     );
     
-    await delay(3000); // Foydalanuvchi o'qish uchun vaqt
+    await delay(1400); // Foydalanuvchi o'qish uchun vaqt
 
     // Savollarni yuborish
     await sendQuestionsWithErrorHandling(
