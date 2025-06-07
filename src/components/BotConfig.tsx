@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Edit, Key, User, Bot, CheckCircle } from 'lucide-react';
+import { Save, Edit, Key, User, Bot, CheckCircle, AlertCircle } from 'lucide-react';
 import { TelegramConfig } from '../types';
 
 interface BotConfigProps {
@@ -7,24 +7,97 @@ interface BotConfigProps {
   onConfigChange: (config: TelegramConfig) => void;
 }
 
+interface InputFieldProps {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  disabled: boolean;
+  icon: React.ReactNode;
+  hint: string;
+  type?: string;
+  error?: string;
+}
+
+const InputField: React.FC<InputFieldProps> = ({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  icon,
+  hint,
+  type = 'text',
+  error,
+}) => (
+  <div className="relative">
+    <label htmlFor={id} className="block text-sm font-medium text-gray-300 mb-1">
+      {label}
+    </label>
+    <div className="flex">
+      <div className="flex items-center bg-[#3b3950] rounded-l-md p-2 border-r border-gray-600">
+        {icon}
+      </div>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        className={`w-full bg-[#17161c] text-white p-2 rounded-r-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 ${
+          error ? 'border border-red-500' : ''
+        }`}
+        aria-invalid={!!error}
+        aria-describedby={`${id}-hint`}
+      />
+    </div>
+    <p id={`${id}-hint`} className="text-xs text-gray-400 mt-1">
+      {hint}
+    </p>
+    {error && (
+      <p className="text-xs text-red-400 mt-1 flex items-center">
+        <AlertCircle size={14} className="mr-1" />
+        {error}
+      </p>
+    )}
+  </div>
+);
+
 const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
   const [botToken, setBotToken] = useState(config.botToken || '');
   const [userId, setUserId] = useState(config.userId || '');
   const [isEditing, setIsEditing] = useState(!config.botToken || !config.userId);
   const [isSaved, setIsSaved] = useState(false);
+  const [errors, setErrors] = useState<{ botToken?: string; userId?: string }>({});
+
+  const validateInputs = () => {
+    const newErrors: { botToken?: string; userId?: string } = {};
+    if (!/^\d+:[A-Za-z0-9\-_]+$/.test(botToken)) {
+      newErrors.botToken = 'Bot tokeni noto‘g‘ri formatda';
+    }
+    if (!/^\d+$/.test(userId)) {
+      newErrors.userId = 'User ID faqat raqamlardan iborat bo‘lishi kerak';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSave = () => {
+    if (!validateInputs()) return;
     onConfigChange({ botToken, userId });
     setIsEditing(false);
     setIsSaved(true);
-    
-    // Reset the "Saved" message after 3 seconds
-    setTimeout(() => setIsSaved(false), 3000);
   };
 
-  const handleEdit = () => {
-    setIsEditing(true);
-  };
+  useEffect(() => {
+    if (isSaved) {
+      const timer = setTimeout(() => setIsSaved(false), 3000);
+      return () => clearTimeout(timer); // Cleanup
+    }
+  }, [isSaved]);
 
   return (
     <div className="bg-[#2d2b3d] p-6 rounded-lg shadow-lg mb-8 transition-all duration-300">
@@ -34,65 +107,48 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
       </h3>
 
       <div className="space-y-4">
-        <div className="relative">
-          <label htmlFor="botToken" className="block text-sm font-medium text-gray-300 mb-1">
-            Bot Token
-          </label>
-          <div className="flex">
-            <div className="flex items-center bg-[#3b3950] rounded-l-md p-2 border-r border-gray-600">
-              <Key size={18} className="text-gray-400" />
-            </div>
-            <input
-              id="botToken"
-              type={isEditing ? "text" : "password"}
-              value={botToken}
-              onChange={(e) => setBotToken(e.target.value)}
-              disabled={!isEditing}
-              placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-              className="w-full bg-[#17161c] text-white p-2 rounded-r-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
-            />
-          </div>
-          <p className="text-xs text-gray-400 mt-1">Bot tokenini @BotFather orqali olishingiz mumkin</p>
-        </div>
+        <InputField
+          id="botToken"
+          label="Bot tokeni"
+          value={botToken}
+          onChange={setBotToken}
+          placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+          disabled={!isEditing}
+          icon={<Key size={18} className="text-gray-400" />}
+          hint="Bot tokenini @BotFather orqali olishingiz mumkin"
+          type={isEditing ? 'text' : 'password'}
+          error={errors.botToken}
+        />
 
-        <div className="relative">
-          <label htmlFor="userId" className="block text-sm font-medium text-gray-300 mb-1">
-            User ID
-          </label>
-          <div className="flex">
-            <div className="flex items-center bg-[#3b3950] rounded-l-md p-2 border-r border-gray-600">
-              <User size={18} className="text-gray-400" />
-            </div>
-            <input
-              id="userId"
-              type="text"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              disabled={!isEditing}
-              placeholder="12345678"
-              className="w-full bg-[#3b3950] text-white p-2 rounded-r-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
-            />
-          </div>
-          <p className="text-xs text-gray-400 mt-1">User ID-ni @userinfobot orqali olishingiz mumkin</p>
-        </div>
+        <InputField
+          id="userId"
+          label="User ID"
+          value={userId}
+          onChange={setUserId}
+          placeholder="12345678"
+          disabled={!isEditing}
+          icon={<User size={18} className="text-gray-400" />}
+          hint="User ID-ni @userinfobot orqali olishingiz mumkin"
+          error={errors.userId}
+        />
 
         <div className="flex justify-end mt-4">
           {isEditing ? (
             <button
               onClick={handleSave}
-              disabled={!botToken || !userId}
+              disabled={!botToken || !userId || !!errors.botToken || !!errors.userId}
               className="flex items-center bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save size={18} className="mr-2" />
-              Saqlash
+              Sozlamalarni saqlash
             </button>
           ) : (
             <button
-              onClick={handleEdit}
+              onClick={() => setIsEditing(true)}
               className="flex items-center bg-[#3b3950] hover:bg-[#4d4b63] text-white py-2 px-4 rounded-md transition-colors duration-200"
             >
               <Edit size={18} className="mr-2" />
-              O'zgartirish
+              Sozlamalarni tahrirlash
             </button>
           )}
         </div>

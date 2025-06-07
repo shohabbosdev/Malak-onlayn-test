@@ -27,7 +27,7 @@ function App() {
             <div className="flex justify-center">
               <Bot size={64} className="text-purple-400" />
             </div>
-            <h2 className="text-3xl font-bold mt-4 mb-2">Telegram Quiz Bot</h2>
+            <h2 className="text-3xl font-bold mt-4 mb-2">Telegram quiz bot dasturi</h2>
             <p className="text-gray-300 max-w-xl mx-auto">
               Excel fayl orqali testlarni yuklang va Telegram bot orqali o'tkazing. 
               Natijalarni real vaqtda kuzating.
