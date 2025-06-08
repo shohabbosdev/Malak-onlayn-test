@@ -2,7 +2,7 @@ export interface Question {
   question: string;
   correctAnswer: string;
   options: string[];
-  rowNumber: number; // Excel qator raqami
+  rowNumber: number; 
 }
 
 export interface TelegramConfig {

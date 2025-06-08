@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Edit, Key, User, Bot, CheckCircle, AlertCircle } from 'lucide-react';
+import { Save, Edit, Key, User, Bot, CheckCircle, AlertCircle,  ChevronDown, ChevronUp } from 'lucide-react';
+
 import { TelegramConfig } from '../types';
 
 interface BotConfigProps {
@@ -67,6 +68,7 @@ const InputField: React.FC<InputFieldProps> = ({
 );
 
 const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
+  const [isOpen, setIsOpen] = useState(true);
   const [botToken, setBotToken] = useState(config.botToken || '');
   const [userId, setUserId] = useState(config.userId || '');
   const [isEditing, setIsEditing] = useState(!config.botToken || !config.userId);
@@ -94,19 +96,30 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
 
   useEffect(() => {
     if (isSaved) {
-      const timer = setTimeout(() => setIsSaved(false), 3000);
+      const timer = setTimeout(() => setIsSaved(false), 1500);
       return () => clearTimeout(timer); // Cleanup
     }
   }, [isSaved]);
 
   return (
     <div className="bg-[#2d2b3d] p-6 rounded-lg shadow-lg mb-8 transition-all duration-300">
-      <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
-        <Bot size={24} className="text-purple-400 mr-2" />
-        TelegramBot sozlamalari
+      <h3
+        className="text-xl font-semibold text-white mb-4 flex items-center justify-between cursor-pointer"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <span className="flex items-center">
+          <Bot size={24} className="text-purple-400 mr-2" />
+          TelegramBot sozlamalari
+        </span>
+        {isOpen ? (
+          <ChevronUp size={20} className="text-white" />
+        ) : (
+          <ChevronDown size={20} className="text-white" />
+        )}
       </h3>
 
-      <div className="space-y-4">
+      { isOpen && (
+        <div className="space-y-4">
         <InputField
           id="botToken"
           label="Bot tokeni"
@@ -160,6 +173,8 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
           </div>
         )}
       </div>
+      )}
+      
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Question } from './types';
+import { Question } from '../types';
 
 // Fisher-Yates shuffle algoritmi
 const shuffleArray = <T>(array: T[]): T[] => {
