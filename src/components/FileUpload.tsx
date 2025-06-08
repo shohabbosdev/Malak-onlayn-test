@@ -3,6 +3,8 @@ import { Upload, FileText, Check, AlertCircle, Send, Clock } from 'lucide-react'
 import { parseExcelFile } from '../utils/excelParser';
 import { Question, TelegramConfig, TestResult, QuizSettings } from '../types';
 import { sendQuizToTelegram } from '../utils/telegramService';
+import { generateChartImage } from '../utils/generateChartImage';
+import { Pie } from 'react-chartjs-2';
 
 interface FileUploadProps {
   config: TelegramConfig;
@@ -141,6 +143,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
       );
       setTestResult(result);
       setSuccess('Savollar muvaffaqiyatli yuborildi');
+
+      // Grafikni rasmga aylantirish
+      const chartImage = await generateChartImage(result);
+    // Telegramga rasmni yuborish (Agar kerak bo‘lsa)
+    // await sendImageToTelegram(config, chartImage);
     } catch (err: any) {
       setError(err.message || 'Telegram botga yuborishda xatolik yuz berdi');
     } finally {
@@ -343,6 +350,22 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
                 {testResult.percentage.toFixed(1)}%
               </p>
             </div>
+          </div>
+          {/* Pie grafik */}
+          <div className="mt-6">
+            <h5 className="text-white text-lg mb-2">Grafik ko‘rinishda:</h5>
+            <Pie
+              data={{
+                labels: ['To‘g‘ri', 'Noto‘g‘ri'],
+                datasets: [
+                  {
+                    data: [testResult.correct, testResult.incorrect],
+                    backgroundColor: ['#22c55e', '#ef4444'],
+                    borderWidth: 1,
+                  },
+                ],
+              }}
+            />
           </div>
         </div>
       )}
