@@ -254,13 +254,16 @@ class TelegramAPI {
       );
     }
 
+    // Kanallar va guruhlarga yuboriladigan pollar anonim bo'lishi kerak
+    const isChannelOrGroup = chatId.startsWith('@') || chatId.startsWith('-100') || chatId.startsWith('-');
+    
     const payload = {
       chat_id: chatId,
       question: sanitizedQuestion,
       options: sanitizedOptions,
       type: 'quiz',
       correct_option_id: correctOptionId,
-      is_anonymous: false,
+      is_anonymous: isChannelOrGroup, // Kanallar va guruhlar uchun true, oddiy foydalanuvchilar uchun false
       protect_content: true,
       open_period: Math.min(Math.max(openPeriod, 5), 200),
       explanation: `Bu savol Excel faylining ${rowNumber}-qatorida joylashgan.`,
