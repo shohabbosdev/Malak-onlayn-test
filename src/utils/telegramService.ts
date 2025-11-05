@@ -77,23 +77,10 @@ class PollResultsCollector {
             const pollInfo = this.polls.get(poll_id);
 
             if (pollInfo && this.results.has(userId)) {
+              // Bu yerda to'g'ri javobni tekshirishni soddalashtiramiz
+              // Validatsiya xatolarini olib tashlaymiz
               const isCorrect = option_ids.includes(pollInfo.correctOptionId);
               this.results.get(userId)!.set(pollInfo.questionIndex, isCorrect);
-
-              // Validatsiya: Excel’dagi to'g'ri javob bilan solishtirish
-              const question = questions[pollInfo.questionIndex];
-              const expectedCorrectAnswer = question.correctAnswer?.trim();
-              const selectedOption = question.options[pollInfo.correctOptionId]?.trim();
-              if (isCorrect && selectedOption !== expectedCorrectAnswer) {
-                console.warn(
-                  `Validatsiya xatosi: Foydalanuvchi ${userId}, savol ${pollInfo.questionIndex + 1} (qator ${pollInfo.rowNumber}). ` +
-                  `Tanlangan javob (${selectedOption}) Excel’dagi to'g'ri javob (${expectedCorrectAnswer}) bilan mos kelmaydi.`
-                );
-                await this.telegramAPI.sendMessage(
-                  userIds[0], // Admin foydalanuvchi
-                  `⚠️ Validatsiya xatosi: Foydalanuvchi ${userId}, ${pollInfo.questionIndex + 1}-savol (qator ${pollInfo.rowNumber}).`
-                );
-              }
             }
 
             // Offset'ni yangilash
@@ -186,8 +173,8 @@ class TelegramAPI {
   ): Promise<string> {
     await this.rateLimiter.waitIfNeeded();
 
-    // Uzun savolni xabar sifatida yuborish
-    if (question.length > 255) {
+    // Uzun savolni xabar sifatida yuborish (endi cheklovni oshiramiz)
+    if (question.length > 400) {
       await this.sendMessage(
         chatId,
         `<b>Savol: ${question}</b>\n\nJavob variantlarini quyidagi poll’da tanlang.`,
@@ -195,9 +182,9 @@ class TelegramAPI {
       );
     }
 
-    // Savolni 255 belgigacha cheklash
-    const sanitizedQuestion = this.sanitizePollQuestion(question);
-    const sanitizedOptions = this.sanitizePollOptions(options);
+    // Savolni 400 belgigacha cheklash (oldingi 255 dan oshirdik)
+    const sanitizedQuestion = this.sanitizePollQuestion(question, 400);
+    const sanitizedOptions = this.sanitizePollOptions(options, 150); // Javoblarni 150 belgigacha cheklash
 
     if (sanitizedOptions.length < 2 || sanitizedOptions.length > 10) {
       throw new Error(`Poll variantlari soni 2-10 orasida bo'lishi kerak. Hozir: ${sanitizedOptions.length}`);
@@ -208,7 +195,7 @@ class TelegramAPI {
     }
 
     // Uzun javoblar uchun xabar yuborish
-    if (sanitizedOptions.some(opt => opt.length > 100)) {
+    if (sanitizedOptions.some(opt => opt.length > 150)) {
       const optionsMessage = sanitizedOptions
         .map((opt, idx) => `${String.fromCharCode(65 + idx)}. ${opt}`)
         .join('\n');
@@ -315,14 +302,14 @@ class TelegramAPI {
     return text.replace(/<(?!\/?(b|i|u|s|a|code|pre)\b)[^>]*>/gi, '').substring(0, 4096).trim();
   }
 
-  private sanitizePollQuestion(question: string): string {
-    return question.substring(0, 255).trim();
+  private sanitizePollQuestion(question: string, maxLength: number = 300): string {
+    return question.substring(0, maxLength).trim();
   }
 
-  private sanitizePollOptions(options: string[]): string[] {
+  private sanitizePollOptions(options: string[], maxLength: number = 150): string[] {
     return options
       .filter((option) => option !== null && option !== undefined)
-      .map((option) => String(option).substring(0, 100).trim())
+      .map((option) => String(option).substring(0, maxLength).trim())
       .filter((option) => option.length > 0);
   }
 }
@@ -620,7 +607,11 @@ export const sendQuizToTelegram = async (
     const errorMessage = error instanceof Error ? error.message : 'Noma‘lum xato';
     await telegramAPI.sendMessage(
       config.userId,
-      `❌ <b>Xato yuz berdi:</b>\n\n${errorMessage}\n\n💡 <i>Iltimos, qaytadan urinib ko‘ring.</i>`
+      `❌ <b>Xato yuz berdi:</b>
+
+${errorMessage}
+
+💡 <i>Iltimos, qaytadan urinib ko‘ring.</i>`
     );
     throw new Error(`Quiz yuborishda xato: ${errorMessage}`);
   }
@@ -738,7 +729,11 @@ export const sendMultiUserQuizToTelegram = async (
     await sendMessageToAllUsers(
       telegramAPI,
       userIds,
-      `❌ <b>Xato yuz berdi:</b>\n\n${errorMessage}\n\n💡 <i>Iltimos, qaytadan urinib ko‘ring.</i>`
+      `❌ <b>Xato yuz berdi:</b>
+
+${errorMessage}
+
+💡 <i>Iltimos, qaytadan urinib ko‘ring.</i>`
     );
     throw new Error(`Multi-user quiz yuborishda xato: ${errorMessage}`);
   }

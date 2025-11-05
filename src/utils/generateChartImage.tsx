@@ -1,17 +1,22 @@
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import { Chart } from 'chart.js';
-import { TestResult } from '../types';
+import { Pie } from 'react-chartjs-2';
 
+// Chart.js elementlarini ro'yxatdan o'tkazish
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-export async function generateChartImage(testResult: TestResult): Promise<string> {
+export async function generateChartImage(testResult: any): Promise<string> {
+  // Canvas yaratish
   const canvas = document.createElement('canvas');
-  canvas.width = 200;
-  canvas.height = 200;
+  canvas.width = 400;
+  canvas.height = 400;
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error("Kontekst olinmadi");
+  
+  if (!ctx) {
+    throw new Error('Canvas konteksti olinmadi');
+  }
 
-  const chart = new Chart(ctx, {
+  // Chart.js orqali diagramma yaratish
+  const chart = new ChartJS(canvas, {
     type: 'pie',
     data: {
       labels: ['To‘g‘ri', 'Noto‘g‘ri'],
@@ -24,19 +29,20 @@ export async function generateChartImage(testResult: TestResult): Promise<string
       ],
     },
     options: {
-        responsive: false,
-        plugins: {
-          legend: {
-            position: 'bottom',
-          },
+      responsive: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
         },
       },
+    },
   });
 
+  // Diagrammani tasvirga aylantirish
   return new Promise((resolve) => {
     setTimeout(() => {
       const base64 = canvas.toDataURL('image/png');
-      chart.destroy(); // resursni tozalash
+      chart.destroy(); // Resurslarni tozalash
       resolve(base64);
     }, 500);
   });

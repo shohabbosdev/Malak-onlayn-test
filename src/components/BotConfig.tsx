@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Edit, Key, User, Bot, CheckCircle, AlertCircle,  ChevronDown, ChevronUp } from 'lucide-react';
+import { Save, Edit, Key, User, Bot, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { TelegramConfig } from '../types';
 
@@ -68,12 +68,19 @@ const InputField: React.FC<InputFieldProps> = ({
 );
 
 const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false); // Changed to false - collapsed by default
   const [botToken, setBotToken] = useState(config.botToken || '');
   const [userId, setUserId] = useState(config.userId || '');
   const [isEditing, setIsEditing] = useState(!config.botToken || !config.userId);
   const [isSaved, setIsSaved] = useState(false);
   const [errors, setErrors] = useState<{ botToken?: string; userId?: string }>({});
+
+  // Auto-expand when there are errors or when editing
+  useEffect(() => {
+    if (Object.keys(errors).length > 0 || isEditing) {
+      setIsOpen(true);
+    }
+  }, [errors, isEditing]);
 
   const validateInputs = () => {
     const newErrors: { botToken?: string; userId?: string } = {};
@@ -97,7 +104,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
   useEffect(() => {
     if (isSaved) {
       const timer = setTimeout(() => setIsSaved(false), 1500);
-      return () => clearTimeout(timer); // Cleanup
+      return () => clearTimeout(timer);
     }
   }, [isSaved]);
 
@@ -118,63 +125,62 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
         )}
       </h3>
 
-      { isOpen && (
+      {isOpen && (
         <div className="space-y-4">
-        <InputField
-          id="botToken"
-          label="Bot tokeni"
-          value={botToken}
-          onChange={setBotToken}
-          placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-          disabled={!isEditing}
-          icon={<Key size={18} className="text-gray-400" />}
-          hint="Bot tokenini @BotFather orqali olishingiz mumkin"
-          type={isEditing ? 'text' : 'password'}
-          error={errors.botToken}
-        />
+          <InputField
+            id="botToken"
+            label="Bot tokeni"
+            value={botToken}
+            onChange={setBotToken}
+            placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+            disabled={!isEditing}
+            icon={<Key size={18} className="text-gray-400" />}
+            hint="Bot tokenini @BotFather orqali olishingiz mumkin"
+            type={isEditing ? 'text' : 'password'}
+            error={errors.botToken}
+          />
 
-        <InputField
-          id="userId"
-          label="User ID"
-          value={userId}
-          onChange={setUserId}
-          placeholder="12345678"
-          disabled={!isEditing}
-          icon={<User size={18} className="text-gray-400" />}
-          hint="User ID-ni @userinfobot orqali olishingiz mumkin"
-          error={errors.userId}
-        />
+          <InputField
+            id="userId"
+            label="User ID"
+            value={userId}
+            onChange={setUserId}
+            placeholder="12345678"
+            disabled={!isEditing}
+            icon={<User size={18} className="text-gray-400" />}
+            hint="User ID-ni @userinfobot orqali olishingiz mumkin"
+            error={errors.userId}
+          />
 
-        <div className="flex justify-end mt-4">
-          {isEditing ? (
-            <button
-              onClick={handleSave}
-              disabled={!botToken || !userId || !!errors.botToken || !!errors.userId}
-              className="flex items-center bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save size={18} className="mr-2" />
-              Sozlamalarni saqlash
-            </button>
-          ) : (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="flex items-center bg-[#3b3950] hover:bg-[#4d4b63] text-white py-2 px-4 rounded-md transition-colors duration-200"
-            >
-              <Edit size={18} className="mr-2" />
-              Sozlamalarni tahrirlash
-            </button>
+          <div className="flex justify-end mt-4">
+            {isEditing ? (
+              <button
+                onClick={handleSave}
+                disabled={!botToken || !userId || !!errors.botToken || !!errors.userId}
+                className="flex items-center bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save size={18} className="mr-2" />
+                Sozlamalarni saqlash
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center bg-[#3b3950] hover:bg-[#4d4b63] text-white py-2 px-4 rounded-md transition-colors duration-200"
+              >
+                <Edit size={18} className="mr-2" />
+                Sozlamalarni tahrirlash
+              </button>
+            )}
+          </div>
+
+          {isSaved && (
+            <div className="mt-2 text-green-400 text-sm flex items-center">
+              <CheckCircle size={16} className="mr-1" />
+              Muvaffaqiyatli saqlandi!
+            </div>
           )}
         </div>
-
-        {isSaved && (
-          <div className="mt-2 text-green-400 text-sm flex items-center">
-            <CheckCircle size={16} className="mr-1" />
-            Muvaffaqiyatli saqlandi!
-          </div>
-        )}
-      </div>
       )}
-      
     </div>
   );
 };

@@ -62,7 +62,7 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
     for (let rowIndex = 1; rowIndex < jsonData.length; rowIndex++) {
       const row = jsonData[rowIndex];
       if (!row || row.length === 0) {
-        errors.push({ row: rowIndex + 1, message: 'Bo‘sh qator' });
+        // Bo'sh qatorlarni o'tkazib yuborish
         continue;
       }
 
@@ -79,16 +79,6 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
         continue;
       }
 
-      // Savolni qisqartirish (255 belgidan uzun bo‘lsa)
-      if (questionText.length > 255) {
-        errors.push({
-          row: rowIndex + 1,
-          message: 'Savol 255 belgidan uzun, avtomatik qisqartirildi',
-          details: `Uzunlik: ${questionText.length}, Eski: ${questionText.substring(0, 50)}...`,
-        });
-        questionText = questionText.substring(0, 255);
-      }
-
       // Muqobil javoblar
       const options = new Set<string>();
       for (const optionIndex of optionIndices) {
@@ -102,29 +92,6 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
       options.add(correctAnswer);
 
       let optionArray = Array.from(options);
-
-      // Javob variantlarini qisqartirish (100 belgidan uzun bo‘lsa)
-      optionArray = optionArray.map((opt) => {
-        if (opt.length > 100) {
-          errors.push({
-            row: rowIndex + 1,
-            message: 'Javob varianti 100 belgidan uzun, avtomatik qisqartirildi',
-            details: `Eski: ${opt.substring(0, 50)}..., Yangi: ${opt.substring(0, 100)}`,
-          });
-          return opt.substring(0, 100);
-        }
-        return opt;
-      });
-
-      // To‘g‘ri javobni qisqartirish
-      if (correctAnswer.length > 100) {
-        errors.push({
-          row: rowIndex + 1,
-          message: 'To‘g‘ri javob 100 belgidan uzun, avtomatik qisqartirildi',
-          details: `Eski: ${correctAnswer.substring(0, 50)}..., Yangi: ${correctAnswer.substring(0, 100)}`,
-        });
-        correctAnswer = correctAnswer.substring(0, 100);
-      }
 
       // Takrorlangan javoblar tufayli kam variantli test
       if (optionArray.length < 2) {
@@ -172,4 +139,38 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
     console.error('Excel parser xatosi:', errorMessage);
     throw new Error(errorMessage);
   }
+};
+
+// Utility function to generate Excel report from quiz results
+export const generateExcelReport = (rankings: any[], quizTitle: string = 'Test Natijalari'): Blob => {
+  // Create workbook and worksheet
+  const wb = XLSX.utils.book_new();
+  
+  // Prepare data for export
+  const data = rankings.map((result, index) => ({
+    'O\'rin': index + 1,
+    'Foydalanuvchi': result.userInfo?.firstName && result.userInfo?.lastName 
+      ? `${result.userInfo.firstName} ${result.userInfo.lastName}` 
+      : result.userInfo?.username 
+        ? `@${result.userInfo.username}` 
+        : `User${result.userInfo?.userId?.slice(-4)}`,
+    'To\'g\'ri javoblar': result.correct,
+    'Noto\'g\'ri javoblar': result.incorrect,
+    'Jami savollar': result.total,
+    'Foiz': `${result.percentage.toFixed(1)}%`,
+    'Vaqt (soniya)': result.completionTime,
+    'Telegram ID': result.userInfo?.userId || 'Noma\'lum'
+  }));
+
+  // Create worksheet
+  const ws = XLSX.utils.json_to_sheet(data);
+  
+  // Add worksheet to workbook
+  XLSX.utils.book_append_sheet(wb, ws, 'Natijalar');
+  
+  // Generate buffer
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  
+  // Return as Blob
+  return new Blob([wbout], { type: 'application/octet-stream' });
 };

@@ -1,16 +1,27 @@
-import React, { useState, useRef } from 'react';
-import { Upload, FileText, Check, AlertCircle, Send, Clock } from 'lucide-react';
+import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import { Upload, FileText, Check, AlertCircle, Send, Clock, Download } from 'lucide-react';
 import { parseExcelFile } from '../utils/excelParser';
+import { generateExcelReport } from '../utils/excelParser';
 import { Question, TelegramConfig, TestResult, QuizSettings } from '../types';
-import { sendQuizToTelegram } from '../utils/telegramService';
+import { sendQuizToTelegram, sendMultiUserQuizToTelegram } from '../utils/telegramService';
 import { generateChartImage } from '../utils/generateChartImage';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
+
+// Chart.js elementlarini ro'yxatdan o'tkazish
+ChartJS.register(ArcElement, Tooltip, Legend);
 
 interface FileUploadProps {
   config: TelegramConfig;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
+// Add ref interface
+interface FileUploadRef {
+  validateConfig: () => boolean;
+}
+
+// Wrap component with forwardRef
+const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [fileName, setFileName] = useState<string>('');
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -22,7 +33,15 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
   });
   const [isSending, setIsSending] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [quizRankings, setQuizRankings] = useState<any[]>([]);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  // Expose validation function via ref
+  useImperativeHandle(ref, () => ({
+    validateConfig: () => {
+      return !!(config.botToken && config.userId);
+    }
+  }));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -135,24 +154,64 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
     setSuccess('');
 
     try {
-      const result = await sendQuizToTelegram(
-        questions,
-        config,
-        quizSettings.questionCount,
-        quizSettings.intervalSeconds
-      );
+      // Check if it's a multi-user scenario (comma-separated user IDs)
+      const userIds = config.userId.includes(',') 
+        ? config.userId.split(',').map(id => id.trim()).filter(id => id)
+        : [config.userId];
+      
+      let result;
+      if (userIds.length > 1) {
+        // Multi-user quiz
+        const { rankings } = await sendMultiUserQuizToTelegram(
+          questions,
+          config,
+          userIds,
+          quizSettings.questionCount,
+          quizSettings.intervalSeconds
+        );
+        setQuizRankings(rankings);
+        // For compatibility, set a summary result
+        const totalCorrect = rankings.reduce((sum: number, r: any) => sum + r.correct, 0);
+        const totalIncorrect = rankings.reduce((sum: number, r: any) => sum + r.incorrect, 0);
+        result = {
+          correct: totalCorrect,
+          incorrect: totalIncorrect,
+          total: rankings[0]?.total || 0,
+          percentage: rankings.length > 0 ? (totalCorrect / (totalCorrect + totalIncorrect)) * 100 : 0
+        };
+      } else {
+        // Single user quiz
+        result = await sendQuizToTelegram(
+          questions,
+          config,
+          quizSettings.questionCount,
+          quizSettings.intervalSeconds
+        );
+        setQuizRankings([]); // Clear rankings for single user
+      }
+      
       setTestResult(result);
       setSuccess('Savollar muvaffaqiyatli yuborildi');
-
-      // Grafikni rasmga aylantirish
-      const chartImage = await generateChartImage(result);
-    // Telegramga rasmni yuborish (Agar kerak bo‘lsa)
-    // await sendImageToTelegram(config, chartImage);
     } catch (err: any) {
       setError(err.message || 'Telegram botga yuborishda xatolik yuz berdi');
     } finally {
       setIsSending(false);
     }
+  };
+
+  // Add function to download Excel report
+  const handleDownloadReport = () => {
+    if (quizRankings.length === 0) return;
+    
+    const blob = generateExcelReport(quizRankings, 'Guruh Test Natijalari');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `test_natijalari_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -278,16 +337,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
               <input
                 id="intervalSeconds"
                 type="number"
-                min={3}
-                max={300}
+                min="1"
+                max="300"
                 value={quizSettings.intervalSeconds}
                 onChange={(e) =>
                   setQuizSettings((prev) => ({
                     ...prev,
-                    intervalSeconds: Math.min(
-                      Math.max(5, parseInt(e.target.value) || 30),
-                      300
-                    ),
+                    intervalSeconds: Math.min(Math.max(1, parseInt(e.target.value) || 1), 300),
                   }))
                 }
                 className="w-24 bg-[#3b3950] text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -296,9 +352,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
               <span className="ml-2 text-gray-400">soniya</span>
             </div>
             <p id="interval-seconds-desc" className="text-xs text-gray-400 mt-1">
-              Minimal: 3 soniya, Maksimal: 300 soniya
+              Minimal: 1 soniya, Maksimal: 300 soniya
             </p>
           </div>
+
         </div>
       )}
 
@@ -324,7 +381,19 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
 
       {testResult && (
         <div className="mt-6 bg-[#3b3950] rounded-lg p-4">
-          <h4 className="text-lg font-medium text-white mb-3">Test natijalari</h4>
+          <div className="flex justify-between items-center">
+            <h4 className="text-lg font-medium text-white mb-3">Test natijalari</h4>
+            {quizRankings.length > 0 && (
+              <button
+                onClick={handleDownloadReport}
+                className="flex items-center bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded-md text-sm transition-colors duration-200"
+              >
+                <Download size={16} className="mr-1" />
+                Excel yuklab olish
+              </button>
+            )}
+          </div>
+          
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-green-900/30 p-3 rounded-md">
               <p className="text-sm text-gray-300">To'g'ri javoblar</p>
@@ -351,26 +420,77 @@ const FileUpload: React.FC<FileUploadProps> = ({ config }) => {
               </p>
             </div>
           </div>
+          
           {/* Pie grafik */}
           <div className="mt-6">
             <h5 className="text-white text-lg mb-2">Grafik ko‘rinishda:</h5>
-            <Pie
-              data={{
-                labels: ['To‘g‘ri', 'Noto‘g‘ri'],
-                datasets: [
-                  {
-                    data: [testResult.correct, testResult.incorrect],
-                    backgroundColor: ['#22c55e', '#ef4444'],
-                    borderWidth: 1,
+            <div className="flex justify-center">
+              <Pie
+                data={{
+                  labels: ['To‘g‘ri', 'Noto‘g‘ri'],
+                  datasets: [
+                    {
+                      data: [testResult.correct, testResult.incorrect],
+                      backgroundColor: ['#22c55e', '#ef4444'],
+                      borderWidth: 1,
+                    },
+                  ],
+                }}
+                options={{
+                  responsive: true,
+                  plugins: {
+                    legend: {
+                      position: 'bottom',
+                    },
                   },
-                ],
-              }}
-            />
+                }}
+              />
+            </div>
           </div>
+          
+          {/* Display rankings for multi-user quizzes */}
+          {quizRankings.length > 0 && (
+            <div className="mt-6">
+              <h5 className="text-white text-lg mb-2">Ishtirokchilar reytingi:</h5>
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-[#2d2b3d] text-white rounded-lg overflow-hidden">
+                  <thead>
+                    <tr className="bg-[#3b3950]">
+                      <th className="py-2 px-3 text-left">O'rin</th>
+                      <th className="py-2 px-3 text-left">Foydalanuvchi</th>
+                      <th className="py-2 px-3 text-left">To'g'ri</th>
+                      <th className="py-2 px-3 text-left">Foiz</th>
+                      <th className="py-2 px-3 text-left">Vaqt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quizRankings.map((ranking, index) => (
+                      <tr 
+                        key={ranking.userInfo.userId} 
+                        className={index % 2 === 0 ? 'bg-[#332f45]' : 'bg-[#2d2b3d]'}
+                      >
+                        <td className="py-2 px-3">{index + 1}</td>
+                        <td className="py-2 px-3">
+                          {ranking.userInfo.firstName && ranking.userInfo.lastName 
+                            ? `${ranking.userInfo.firstName} ${ranking.userInfo.lastName}`
+                            : ranking.userInfo.username 
+                              ? `@${ranking.userInfo.username}`
+                              : `User${ranking.userInfo.userId?.slice(-4)}`}
+                        </td>
+                        <td className="py-2 px-3">{ranking.correct}/{ranking.total}</td>
+                        <td className="py-2 px-3">{ranking.percentage.toFixed(1)}%</td>
+                        <td className="py-2 px-3">{ranking.completionTime}s</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
-};
+});
 
 export default FileUpload;
