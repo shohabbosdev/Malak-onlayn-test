@@ -480,7 +480,7 @@ export class MultiUserQuizManager {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    const sortedResults = Array.from(session.results.values()).sort((a, b) => {
+    const sortedResults = Array.from(session.results.values()).sort((a: UserResult, b: UserResult) => {
       if (b.correct !== a.correct) return b.correct - a.correct;
       return a.completionTime - b.completionTime;
     });
@@ -746,7 +746,7 @@ export const sendMultiUserQuizToTelegram = async (
       const { question, options, correctAnswer, rowNumber } = session.questions[i];
       const shuffledData = shuffleWithCorrectIndex(options, correctAnswer);
 
-      const batchSize = 5;
+      const batchSize = 10; // Batch hajmini oshirish orqali samaradorlikni yaxshilash
       for (let j = 0; j < validUserIds.length; j += batchSize) {
         const batch = validUserIds.slice(j, j + batchSize);
         const pollPromises = batch.map(async (userId) => {
