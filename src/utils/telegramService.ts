@@ -72,13 +72,18 @@ interface UserPollState {
   questionIndex: number;
   correctOptionId: number;
   isAnswered: boolean;
+  createdAt: number; // State yaratilgan vaqt
 }
 
 class PollResultsCollector {
   private userStates: Map<string, UserPollState> = new Map(); // userId -> UserPollState
   private results: Map<string, Map<number, boolean>> = new Map(); // userId -> (questionIndex -> isCorrect)
+  private readonly maxStateAge = 300000; // 5 minutes in milliseconds
 
-  constructor(private telegramAPI: TelegramAPI) {}
+  constructor(private telegramAPI: TelegramAPI) {
+    // Clean up old states periodically
+    setInterval(() => this.cleanupOldStates(), 60000); // Every minute
+  }
 
   // Foydalanuvchi uchun kutish holatini o'rnatish
   setUserPollState(userId: string, pollId: string, questionIndex: number, correctOptionId: number): void {
@@ -86,7 +91,8 @@ class PollResultsCollector {
       expectedPollId: pollId,
       questionIndex,
       correctOptionId,
-      isAnswered: false
+      isAnswered: false,
+      createdAt: Date.now()
     });
     
     // Foydalanuvchi uchun natijalar mapini yaratish (agar mavjud bo'lmasa)
@@ -103,7 +109,7 @@ class PollResultsCollector {
     console.log(`Bitta poll uchun javob kutish: ${userIds.length} foydalanuvchi`);
 
     const startTime = Date.now();
-    const timeoutMs = timeoutSeconds * 1000;
+    const timeoutMs = Math.min(timeoutSeconds * 1000, 300000); // Max 5 minutes
     let offset: number | undefined = undefined;
 
     // Barcha foydalanuvchilar javob berganligini tekshirish
@@ -166,12 +172,27 @@ class PollResultsCollector {
   clearUserState(userId: string): void {
     this.userStates.delete(userId);
   }
+
+  // Eski holatlarni tozalash
+  private cleanupOldStates(): void {
+    const now = Date.now();
+    for (const [userId, state] of this.userStates.entries()) {
+      if (now - state.createdAt > this.maxStateAge) {
+        this.userStates.delete(userId);
+        console.log(`Eski poll holati o'chirildi: foydalanuvchi ${userId}`);
+      }
+    }
+  }
 }
 
 // RateLimiter klassi
 class RateLimiter {
   private lastRequestTime = 0;
   private readonly minInterval: number;
+  private requestCount = 0;
+  private windowStart = Date.now();
+  private readonly windowSize = 60000; // 1 minute window
+  private readonly maxRequestsPerWindow = 1500; // 1500 requests per minute
 
   constructor(requestsPerSecond: number = 3) {
     this.minInterval = 1000 / requestsPerSecond;
@@ -179,13 +200,32 @@ class RateLimiter {
 
   async waitIfNeeded(): Promise<void> {
     const now = Date.now();
+    
+    // Reset window if needed
+    if (now - this.windowStart > this.windowSize) {
+      this.requestCount = 0;
+      this.windowStart = now;
+    }
+    
+    // Check if we've exceeded rate limits
+    if (this.requestCount >= this.maxRequestsPerWindow) {
+      const timeToWait = this.windowSize - (now - this.windowStart);
+      if (timeToWait > 0) {
+        console.warn(`Rate limit exceeded. Waiting ${timeToWait}ms`);
+        await delay(timeToWait);
+        this.requestCount = 0;
+        this.windowStart = Date.now();
+      }
+    }
+    
+    // Enforce minimum interval between requests
     const timeSinceLastRequest = now - this.lastRequestTime;
-
     if (timeSinceLastRequest < this.minInterval) {
       await delay(this.minInterval - timeSinceLastRequest);
     }
 
     this.lastRequestTime = Date.now();
+    this.requestCount++;
   }
 }
 
@@ -345,11 +385,19 @@ class TelegramAPI {
         const data: TelegramAPIResponse<T> = await response.json();
         if (!response.ok) {
           if (response.status === 429) {
+            // Handle rate limiting
             const retryAfter = data.parameters?.retry_after || Math.pow(2, attempt);
+            console.warn(`Rate limit exceeded. Waiting ${retryAfter} seconds before retry.`);
             await delay(retryAfter * 1000);
             continue;
+          } else if (response.status >= 500) {
+            // Server errors - retry
+            console.warn(`Server error (${response.status}). Retrying...`);
+            await delay(Math.pow(2, attempt) * 1000);
+            continue;
           }
-          throw new Error(data.description || `HTTP ${response.status}`);
+          // Client errors - don't retry
+          throw new Error(`Telegram API Error: ${data.description || `HTTP ${response.status}`}`);
         }
         return data;
       } catch (error) {
@@ -383,9 +431,13 @@ class TelegramAPI {
 export class MultiUserQuizManager {
   private questions: Question[] = [];
   private sessions: Map<string, QuizSession> = new Map();
+  private readonly maxSessions = 100; // Maximum number of sessions to keep
+  private readonly sessionTimeout = 3600000; // 1 hour in milliseconds
 
   constructor(questions: Question[]) {
     this.questions = this.validateAndCleanQuestions(questions);
+    // Clean up old sessions periodically
+    setInterval(() => this.cleanupOldSessions(), 300000); // Every 5 minutes
   }
 
   private validateAndCleanQuestions(questions: Question[]): Question[] {
@@ -417,6 +469,14 @@ export class MultiUserQuizManager {
   createSession(requestedCount: number): string {
     if (this.questions.length === 0) {
       throw new Error('Yaroqli savollar topilmadi');
+    }
+
+    // Limit the number of sessions
+    if (this.sessions.size >= this.maxSessions) {
+      // Remove the oldest session
+      const oldestSessionId = Array.from(this.sessions.entries())
+        .sort((a, b) => a[1].startTime.getTime() - b[1].startTime.getTime())[0][0];
+      this.sessions.delete(oldestSessionId);
     }
 
     const sessionId = crypto.randomUUID();
@@ -502,6 +562,17 @@ export class MultiUserQuizManager {
 
   getQuestionsCount(): number {
     return this.questions.length;
+  }
+
+  // Clean up old sessions
+  private cleanupOldSessions(): void {
+    const now = Date.now();
+    for (const [sessionId, session] of this.sessions.entries()) {
+      if (now - session.startTime.getTime() > this.sessionTimeout || !session.isActive) {
+        this.sessions.delete(sessionId);
+        console.log(`Eski sessiya o'chirildi: ${sessionId}`);
+      }
+    }
   }
 }
 
@@ -685,6 +756,197 @@ ${errorMessage}
 💡 <i>Iltimos, qaytadan urinib ko‘ring.</i>`
     );
     throw new Error(`Quiz yuborishda xato: ${errorMessage}`);
+  }
+};
+
+// Kanalga quiz yuborish uchun funksiya
+export const sendChannelQuizToTelegram = async (
+  questions: Question[],
+  config: TelegramConfig,
+  channelId: string,
+  requestedCount: number,
+  intervalSeconds: number = 45
+): Promise<TestResult> => {
+  if (!config.botToken) throw new Error('Bot token majburiy');
+  if (!channelId) throw new Error('Kanal ID majburiy');
+  if (!questions || questions.length === 0) throw new Error('Savollar ro‘yxati bo‘sh');
+  if (requestedCount <= 0 || requestedCount > 100) throw new Error('Savollar soni 1-100 orasida bo‘lishi kerak');
+
+  console.log('Kanalga quiz yuborilmoqda:', { channelId, questionCount: requestedCount, intervalSeconds });
+
+  const telegramAPI = new TelegramAPI(config.botToken);
+  const quizManager = new MultiUserQuizManager(questions);
+  // Kanallarda foydalanuvchi javoblarini qayta ishlash qiyin, shu sababli oddiy xabar yuboramiz
+
+  try {
+    // Session yaratish
+    const sessionId = quizManager.createSession(requestedCount);
+    const session = quizManager.getSession(sessionId)!;
+
+    // Kanalga boshlang‘ich xabar (sozlamalar bilan)
+    await telegramAPI.sendMessage(
+      channelId,
+      `📝 <b>Test boshlanmoqda!</b>\n\n` +
+      `🔢 Savollar soni: <b>${requestedCount}</b>\n` +
+      `⏱ Har bir savol uchun vaqt: <b>${intervalSeconds}</b> soniya\n` +
+      `📊 Jami test vaqti: <b>${Math.ceil((requestedCount * intervalSeconds) / 60)}</b> daqiqa\n\n` +
+      `✅ Tayyor bo‘lsangiz, birinchi savol kelyapti!`
+    );
+    await delay(2000);
+
+    // Savollarni yuborish - har bir savol kanalga yuboriladi
+    for (let i = 0; i < session.questions.length; i++) {
+      const { question, options, correctAnswer, rowNumber } = session.questions[i];
+      const shuffledData = shuffleWithCorrectIndex(options, correctAnswer);
+
+      await telegramAPI.sendPoll(
+        channelId,
+        `${i + 1}/${session.questions.length}. ${question}`,
+        shuffledData.options,
+        shuffledData.correctIndex,
+        intervalSeconds,
+        rowNumber
+      );
+      
+      // Har bir savol orasida biroz vaqt kutamiz
+      await delay(1000);
+    }
+
+    // Kanalga yakuniy xabar
+    await telegramAPI.sendMessage(
+      channelId,
+      `🏆 <b>Test yakunlandi!</b>\n\n` +
+        `Savollar tugadi. To'g'ri javoblarni o'zingiz tekshiring.`
+    );
+
+    // Oddiy natija qaytaramiz
+    return {
+      correct: 0,
+      incorrect: 0,
+      total: session.questions.length,
+      percentage: 0,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Noma‘lum xato';
+    await telegramAPI.sendMessage(
+      channelId,
+      `❌ <b>Xato yuz berdi:</b>
+
+${errorMessage}
+
+💡 <i>Iltimos, qaytadan urinib ko‘ring.</i>`
+    );
+    throw new Error(`Kanalga quiz yuborishda xato: ${errorMessage}`);
+  }
+};
+
+// Guruhga quiz yuborish uchun funksiya
+export const sendGroupQuizToTelegram = async (
+  questions: Question[],
+  config: TelegramConfig,
+  groupId: string,
+  requestedCount: number,
+  intervalSeconds: number = 45
+): Promise<TestResult> => {
+  if (!config.botToken) throw new Error('Bot token majburiy');
+  if (!groupId) throw new Error('Guruh ID majburiy');
+  if (!questions || questions.length === 0) throw new Error('Savollar ro‘yxati bo‘sh');
+  if (requestedCount <= 0 || requestedCount > 100) throw new Error('Savollar soni 1-100 orasida bo‘lishi kerak');
+
+  console.log('Guruhga quiz yuborilmoqda:', { groupId, questionCount: requestedCount, intervalSeconds });
+
+  const telegramAPI = new TelegramAPI(config.botToken);
+  const quizManager = new MultiUserQuizManager(questions);
+  const pollCollector = new PollResultsCollector(telegramAPI);
+  // Use the intervalSeconds value directly without enforcing a minimum
+  const safeInterval = Math.max(1, Math.min(intervalSeconds, 300));
+
+  try {
+    // Session yaratish
+    const sessionId = quizManager.createSession(requestedCount);
+    const session = quizManager.getSession(sessionId)!;
+
+    // Foydalanuvchini qo‘shish
+    const userInfo = await telegramAPI.getUserInfo(groupId);
+    await quizManager.addParticipant(sessionId, userInfo);
+
+    // Guruhga boshlang‘ich xabar (sozlamalar bilan)
+    await telegramAPI.sendMessage(
+      groupId,
+      `📝 <b>Test boshlanmoqda!</b>\n\n` +
+      `🔢 Savollar soni: <b>${requestedCount}</b>\n` +
+      `⏱ Har bir savol uchun vaqt: <b>${safeInterval}</b> soniya\n` +
+      `📊 Jami test vaqti: <b>${Math.ceil((requestedCount * safeInterval) / 60)}</b> daqiqa\n\n` +
+      `✅ Tayyor bo‘lsangiz, birinchi savol kelyapti!`
+    );
+    await delay(2000);
+
+    // Savollarni yuborish - har bir savol foydalanuvchi javob bergandan keyin
+    for (let i = 0; i < session.questions.length; i++) {
+      const { question, options, correctAnswer, rowNumber } = session.questions[i];
+      const shuffledData = shuffleWithCorrectIndex(options, correctAnswer);
+
+      const pollId = await telegramAPI.sendPoll(
+        groupId,
+        `${i + 1}/${session.questions.length}. ${question}`,
+        shuffledData.options,
+        shuffledData.correctIndex,
+        safeInterval,
+        rowNumber
+      );
+      // Foydalanuvchi uchun kutish holatini o'rnatish
+      pollCollector.setUserPollState(groupId, pollId, i, shuffledData.correctIndex);
+
+      // Har bir savol uchun foydalanuvchi javobini kutish
+      await pollCollector.waitForSinglePollResult(
+        [groupId],
+        safeInterval
+      );
+      
+      // Natijalarni olish
+      const results = pollCollector.getResults();
+      
+      // Natijalarni saqlash
+      quizManager.setSessionResults(sessionId, results);
+    }
+
+    // Barcha savollar tugadi, yakuniy natijalarni olish
+    // Natijalar har bir savol uchun allaqachon saqlangan
+
+    // Natijalarni tayyorlash
+    const userResult = quizManager.getRankings(sessionId)[0];
+    if (!userResult) throw new Error('Natijalar topilmadi');
+
+    const testResult: TestResult = {
+      correct: userResult.correct,
+      incorrect: userResult.incorrect,
+      total: userResult.total,
+      percentage: userResult.percentage,
+    };
+
+    // Natijalarni yuborish
+    await telegramAPI.sendMessage(
+      groupId,
+      `🏆 <b>Test natijalari:</b>\n\n` +
+        `✅ To‘g‘ri javoblar: ${testResult.correct} ta\n` +
+        `❌ Noto‘g‘ri javoblar: ${testResult.incorrect} ta\n` +
+        `📊 Jami: ${testResult.total} ta\n` +
+        `📈 Foiz: ${testResult.percentage.toFixed(1)}%\n\n` +
+        `🎉 Test yakunlandi!`
+    );
+
+    return testResult;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Noma‘lum xato';
+    await telegramAPI.sendMessage(
+      groupId,
+      `❌ <b>Xato yuz berdi:</b>
+
+${errorMessage}
+
+💡 <i>Iltimos, qaytadan urinib ko‘ring.</i>`
+    );
+    throw new Error(`Guruhga quiz yuborishda xato: ${errorMessage}`);
   }
 };
 

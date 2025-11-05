@@ -84,12 +84,24 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
 
   const validateInputs = () => {
     const newErrors: { botToken?: string; userId?: string } = {};
-    if (!/^\d+:[A-Za-z0-9\-_]+$/.test(botToken)) {
+    
+    // Validate bot token if provided
+    if (botToken && !/^[0-9]+:[A-Za-z0-9\-_]+$/.test(botToken)) {
       newErrors.botToken = 'Bot tokeni noto‘g‘ri formatda';
     }
-    if (!(/^-?\d+$/.test(userId) || /^@[a-zA-Z0-9_]+$/.test(userId))) {
-      newErrors.userId = 'User ID faqat raqamlardan iborat bo‘lishi kerak (manfiy ham mumkin) yoki @ bilan boshlanadigan username';
+    
+    // Validate user ID if provided
+    if (userId) {
+      const isNumericId = /^-?[0-9]+$/.test(userId);
+      const isUsername = /^@[a-zA-Z0-9_]+$/.test(userId);
+      const isChannel = /^@/.test(userId);
+      const isGroup = /^-/.test(userId);
+      
+      if (!isNumericId && !isUsername && !isChannel && !isGroup) {
+        newErrors.userId = 'User ID faqat raqamlardan iborat bo‘lishi kerak (manfiy ham mumkin), @ bilan boshlanadigan username, kanal (@) yoki guruh (-) bo‘lishi kerak';
+      }
     }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };

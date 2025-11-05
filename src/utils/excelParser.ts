@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import { Question } from '../types';
 import { UserResult } from './telegramService';
 
-// Xatolarni yig‘ish uchun interfeys
+// Xatolarni yig'ish uchun interfeys
 interface ParseError {
   row: number;
   message: string;
@@ -11,6 +11,11 @@ interface ParseError {
 
 export const parseExcelFile = async (file: File): Promise<Question[]> => {
   try {
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error("Fayl hajmi 10MB dan katta bo'lmasligi kerak");
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
     const sheetName = workbook.SheetNames[0];
@@ -19,6 +24,11 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
     // JSON formatiga o'tkazish
     const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as (string | number)[][];
 
+    // Validate data
+    if (jsonData.length === 0) {
+      throw new Error("Excel faylida ma'lumotlar topilmadi");
+    }
+
     // Ustun nomlarini olish
     const headers = jsonData[0] as string[];
     const questions: Question[] = [];
@@ -26,14 +36,14 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
 
     // Ustun indekslarini aniqlash
     const questionIndex = headers.findIndex((h) => h && h.toLowerCase().includes('savol'));
-    const correctAnswerIndex = headers.findIndex((h) => h && h.toLowerCase().includes('to‘g‘ri javob'));
+    const correctAnswerIndex = headers.findIndex((h) => h && h.toLowerCase().includes("to'g'ri javob"));
     const optionIndices = headers
       .map((h, i) => ({ header: h, index: i }))
       .filter((h) => h.header && h.header.toLowerCase().includes('muqobil javob'))
       .map((h) => h.index);
 
     if (questionIndex === -1 || correctAnswerIndex === -1 || optionIndices.length === 0) {
-      throw new Error('Excel faylida kerakli ustunlar topilmadi: "Savol", "To‘g‘ri javob", "Muqobil javob"');
+      throw new Error('Excel faylida kerakli ustunlar topilmadi: "Savol", "To\'g\'ri javob", "Muqobil javob"');
     }
 
     // Ma'lumotlarni qayta ishlash
@@ -47,13 +57,13 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
       const questionText = String(row[questionIndex] || '').trim();
       const correctAnswer = String(row[correctAnswerIndex] || '').trim();
 
-      // Validatsiya: Savol va to‘g‘ri javob bo‘sh bo‘lmasligi kerak
+      // Validatsiya: Savol va to'g'ri javob bo'sh bo'lmasligi kerak
       if (!questionText) {
-        errors.push({ row: rowIndex + 1, message: 'Savol bo‘sh', details: `Qiymat: "${questionText}"` });
+        errors.push({ row: rowIndex + 1, message: 'Savol bo\'sh', details: `Qiymat: "${questionText}"` });
         continue;
       }
       if (!correctAnswer) {
-        errors.push({ row: rowIndex + 1, message: 'To‘g‘ri javob bo‘sh', details: `Qiymat: "${correctAnswer}"` });
+        errors.push({ row: rowIndex + 1, message: 'To\'g\'ri javob bo\'sh', details: `Qiymat: "${correctAnswer}"` });
         continue;
       }
 
@@ -66,25 +76,18 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
         }
       }
 
-      // To‘g‘ri javobni qo‘shish
+      // To'g'ri javobni qo'shish
       options.add(correctAnswer);
 
       let optionArray = Array.from(options);
 
       // Takrorlangan javoblar tufayli kam variantli test
       if (optionArray.length < 2) {
-        errors.push({
-          row: rowIndex + 1,
-          message: 'Javob variantlari 2 tadan kam, faqat to‘g‘ri javob ishlatiladi',
-          details: `Javoblar: ${optionArray.join(', ')}`,
-        });
-        optionArray = [correctAnswer, 'Noto‘g‘ri javob']; // Minimal 2 variant
+        // 2 tadan kam variant bo'lsa, minimal 2 variant yaratish
+        optionArray = [correctAnswer, 'Noto\'g\'ri javob']; // Minimal 2 variant
       } else if (optionArray.length < 4) {
-        errors.push({
-          row: rowIndex + 1,
-          message: `Kam variantli test (${optionArray.length} ta variant)`,
-          details: `Javoblar: ${optionArray.join(', ')}`,
-        });
+        // 4 tadan kam variant bo'lsa, xabar berish lekin xatolik sifatida hisoblamaslik
+        console.info(`Qator ${rowIndex + 1}: Kam variantli test (${optionArray.length} ta variant)`);
       }
 
       const question: Question = {
@@ -113,7 +116,7 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
     console.log('Yuklangan savollar:', questions);
     return questions;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Excel faylini o‘qishda xato';
+    const errorMessage = error instanceof Error ? error.message : 'Excel faylini o\'qishda xato';
     console.error('Excel parser xatosi:', errorMessage);
     throw new Error(errorMessage);
   }

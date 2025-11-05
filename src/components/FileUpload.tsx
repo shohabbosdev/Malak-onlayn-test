@@ -3,7 +3,7 @@ import { Upload, FileText, Check, AlertCircle, Send, Clock, Download } from 'luc
 import { parseExcelFile } from '../utils/excelParser';
 import { generateExcelReport } from '../utils/excelParser';
 import { Question, TelegramConfig, TestResult, QuizSettings } from '../types';
-import { sendQuizToTelegram, sendMultiUserQuizToTelegram } from '../utils/telegramService';
+import { sendQuizToTelegram, sendMultiUserQuizToTelegram, sendGroupQuizToTelegram } from '../utils/telegramService';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
 
@@ -176,7 +176,32 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
         : [config.userId];
       
       let result;
-      if (userIds.length > 1) {
+      // Check if it's a channel (starts with @)
+      const isChannel = config.userId.startsWith('@');
+      // Check if it's a group (starts with -)
+      const isGroup = config.userId.startsWith('-');
+      
+      if (isChannel) {
+        // Channel quiz - use group-specific functionality for sequential sending
+        result = await sendGroupQuizToTelegram(
+          questions,
+          config,
+          config.userId,
+          quizSettings.questionCount,
+          quizSettings.intervalSeconds
+        );
+        setQuizRankings([]); // Clear rankings for channel
+      } else if (isGroup) {
+        // Group quiz - use group-specific functionality
+        result = await sendGroupQuizToTelegram(
+          questions,
+          config,
+          config.userId,
+          quizSettings.questionCount,
+          quizSettings.intervalSeconds
+        );
+        setQuizRankings([]); // Clear rankings for group
+      } else if (userIds.length > 1) {
         // Multi-user quiz
         const { rankings } = await sendMultiUserQuizToTelegram(
           questions,
