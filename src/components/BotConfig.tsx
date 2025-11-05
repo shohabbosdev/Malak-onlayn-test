@@ -80,8 +80,8 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
     if (!/^\d+:[A-Za-z0-9\-_]+$/.test(botToken)) {
       newErrors.botToken = 'Bot tokeni noto‘g‘ri formatda';
     }
-    if (!/^\d+$/.test(userId)) {
-      newErrors.userId = 'User ID faqat raqamlardan iborat bo‘lishi kerak';
+    if (!(/^-?\d+$/.test(userId) || /^@[a-zA-Z0-9_]+$/.test(userId))) {
+      newErrors.userId = 'User ID faqat raqamlardan iborat bo‘lishi kerak (manfiy ham mumkin) yoki @ bilan boshlanadigan username';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
