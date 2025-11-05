@@ -1,10 +1,11 @@
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import { Pie } from 'react-chartjs-2';
 
 // Chart.js elementlarini ro'yxatdan o'tkazish
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-export async function generateChartImage(testResult: any): Promise<string> {
+import { TestResult } from '../types';
+
+export async function generateChartImage(testResult: TestResult): Promise<string> {
   // Canvas yaratish
   const canvas = document.createElement('canvas');
   canvas.width = 400;

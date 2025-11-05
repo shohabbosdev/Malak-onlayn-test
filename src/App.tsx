@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TelegramConfig } from './types';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -12,8 +12,6 @@ function App() {
     const savedConfig = localStorage.getItem('telegramConfig');
     return savedConfig ? JSON.parse(savedConfig) : { botToken: '', userId: '' };
   });
-  
-  const fileUploadRef = useRef<{ validateConfig: () => boolean }>(null);
 
   useEffect(() => {
     localStorage.setItem('telegramConfig', JSON.stringify(config));
@@ -39,7 +37,7 @@ function App() {
           <div className="grid grid-cols-1 gap-8">
             <BotConfig config={config} onConfigChange={setConfig} />
             
-            <FileUpload ref={fileUploadRef} config={config} />
+            <FileUpload config={config} />
             
             <ExcelExample />
           </div>

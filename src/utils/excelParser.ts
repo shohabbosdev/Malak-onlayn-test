@@ -1,28 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Question } from '../types';
-
-// Fisher-Yates shuffle algoritmi
-const shuffleArray = <T>(array: T[]): T[] => {
-  const newArray = [...array];
-  for (let i = newArray.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-  }
-  return newArray;
-};
-
-// Ustun nomlarini moslashuvchan qidiruv
-const findColumn = (headers: string[], keywords: string[]): string | undefined => {
-  if (!headers || headers.length === 0) return undefined;
-  const normalizedHeaders = headers.map((h) =>
-    (h || '').toLowerCase().trim().replace(/[\s._-]/g, '')
-  );
-  return headers.find((header, index) =>
-    keywords.some((keyword) =>
-      normalizedHeaders[index].includes(keyword.toLowerCase().replace(/[\s._-]/g, ''))
-    )
-  );
-};
+import { UserResult } from './telegramService';
 
 // Xatolarni yig‘ish uchun interfeys
 interface ParseError {
@@ -39,7 +17,7 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
     const sheet = workbook.Sheets[sheetName];
 
     // JSON formatiga o'tkazish
-    const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+    const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as (string | number)[][];
 
     // Ustun nomlarini olish
     const headers = jsonData[0] as string[];
@@ -66,8 +44,8 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
         continue;
       }
 
-      let questionText = String(row[questionIndex] || '').trim();
-      let correctAnswer = String(row[correctAnswerIndex] || '').trim();
+      const questionText = String(row[questionIndex] || '').trim();
+      const correctAnswer = String(row[correctAnswerIndex] || '').trim();
 
       // Validatsiya: Savol va to‘g‘ri javob bo‘sh bo‘lmasligi kerak
       if (!questionText) {
@@ -142,7 +120,7 @@ export const parseExcelFile = async (file: File): Promise<Question[]> => {
 };
 
 // Utility function to generate Excel report from quiz results
-export const generateExcelReport = (rankings: any[], quizTitle: string = 'Test Natijalari'): Blob => {
+export const generateExcelReport = (rankings: UserResult[]): Blob => {
   // Create workbook and worksheet
   const wb = XLSX.utils.book_new();
   

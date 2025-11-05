@@ -1,5 +1,33 @@
 import { Question, TelegramConfig, TestResult } from '../types';
 
+// Telegram API response interface
+interface TelegramAPIResponse<T> {
+  ok: boolean;
+  result: T;
+  description?: string;
+  parameters?: { retry_after?: number };
+}
+
+// Telegram API payload interface
+interface TelegramAPIPayload {
+  chat_id?: string;
+  text?: string;
+  parse_mode?: string;
+  disable_web_page_preview?: boolean;
+  question?: string;
+  options?: string[];
+  type?: string;
+  correct_option_id?: number;
+  is_anonymous?: boolean;
+  protect_content?: boolean;
+  open_period?: number;
+  explanation?: string;
+  explanation_parse_mode?: string;
+  timeout?: number;
+  allowed_updates?: string[];
+  offset?: number;
+}
+
 // Foydalanuvchi ma'lumotlari uchun interface
 interface UserInfo {
   userId: string;
@@ -12,7 +40,7 @@ interface UserInfo {
 }
 
 // Foydalanuvchi natijasi uchun interface
-interface UserResult extends TestResult {
+export interface UserResult extends TestResult {
   userInfo: UserInfo;
   completionTime: number; // sekundlarda
   rank?: number;
@@ -30,57 +58,84 @@ interface QuizSession {
 }
 
 // Poll ma'lumotlari uchun interface
-interface PollInfo {
-  pollId: string;
-  questionIndex: number;
-  correctOptionId: number;
-  rowNumber: number; // Excel qator raqami
-}
+// interface PollInfo {
+//   pollId: string;
+//   questionIndex: number;
+//   correctOptionId: number;
+//   rowNumber: number; // Excel qator raqami
+// }
 
 // PollResultsCollector klassi
+// Har bir foydalanuvchi uchun alohida poll IDlarni kuzatish
+interface UserPollState {
+  expectedPollId: string;
+  questionIndex: number;
+  correctOptionId: number;
+  isAnswered: boolean;
+}
+
 class PollResultsCollector {
-  private polls: Map<string, PollInfo> = new Map(); // pollId -> PollInfo
+  private userStates: Map<string, UserPollState> = new Map(); // userId -> UserPollState
   private results: Map<string, Map<number, boolean>> = new Map(); // userId -> (questionIndex -> isCorrect)
 
   constructor(private telegramAPI: TelegramAPI) {}
 
-  // Poll ma'lumotlarini saqlash
-  addPoll(pollId: string, questionIndex: number, correctOptionId: number, rowNumber: number): void {
-    this.polls.set(pollId, { pollId, questionIndex, correctOptionId, rowNumber });
+  // Foydalanuvchi uchun kutish holatini o'rnatish
+  setUserPollState(userId: string, pollId: string, questionIndex: number, correctOptionId: number): void {
+    this.userStates.set(userId, {
+      expectedPollId: pollId,
+      questionIndex,
+      correctOptionId,
+      isAnswered: false
+    });
+    
+    // Foydalanuvchi uchun natijalar mapini yaratish (agar mavjud bo'lmasa)
+    if (!this.results.has(userId)) {
+      this.results.set(userId, new Map());
+    }
   }
 
-  // Poll natijalarini yig'ish va validatsiya qilish
-  async collectPollResults(
+  // Bitta poll uchun foydalanuvchi javobini kutish
+  async waitForSinglePollResult(
     userIds: string[],
-    pollCount: number,
-    timeoutSeconds: number,
-    questions: Question[]
-  ): Promise<Map<string, Map<number, boolean>>> {
-    console.log(`Poll natijalarini yig'ish: ${userIds.length} foydalanuvchi, ${pollCount} ta poll`);
+    timeoutSeconds: number
+  ): Promise<boolean> {
+    console.log(`Bitta poll uchun javob kutish: ${userIds.length} foydalanuvchi`);
 
     const startTime = Date.now();
     const timeoutMs = timeoutSeconds * 1000;
     let offset: number | undefined = undefined;
 
-    // Har bir foydalanuvchi uchun bo'sh natijalar map’ini yaratish
-    for (const userId of userIds) {
-      this.results.set(userId, new Map());
-    }
+    // Barcha foydalanuvchilar javob berganligini tekshirish
+    const allUsersAnswered = () => {
+      for (const userId of userIds) {
+        const state = this.userStates.get(userId);
+        if (!state || !state.isAnswered) {
+          return false;
+        }
+      }
+      return true;
+    };
 
-    while (Date.now() - startTime < timeoutMs) {
+    while (Date.now() - startTime < timeoutMs && !allUsersAnswered()) {
       try {
         const updates = await this.telegramAPI.getUpdates(offset, ['poll_answer']);
         for (const update of updates) {
           if (update.poll_answer) {
             const { user, poll_id, option_ids } = update.poll_answer;
             const userId = user.id.toString();
-            const pollInfo = this.polls.get(poll_id);
+            const state = this.userStates.get(userId);
 
-            if (pollInfo && this.results.has(userId)) {
-              // Bu yerda to'g'ri javobni tekshirishni soddalashtiramiz
-              // Validatsiya xatolarini olib tashlaymiz
-              const isCorrect = option_ids.includes(pollInfo.correctOptionId);
-              this.results.get(userId)!.set(pollInfo.questionIndex, isCorrect);
+            // Agar bu foydalanuvchi kutayotgan poll bo'lsa
+            if (state && state.expectedPollId === poll_id && !state.isAnswered) {
+              // To'g'ri javobni tekshirish
+              const isCorrect = option_ids.includes(state.correctOptionId);
+              this.results.get(userId)!.set(state.questionIndex, isCorrect);
+              
+              // Foydalanuvchi javob bergan deb belgilash
+              state.isAnswered = true;
+              
+              console.log(`Foydalanuvchi ${userId} javob berdi`);
             }
 
             // Offset'ni yangilash
@@ -88,35 +143,28 @@ class PollResultsCollector {
           }
         }
 
-        // Agar barcha foydalanuvchilar barcha savollarga javob bergan bo'lsa, tugatish
-        let allAnswered = true;
-        for (const userId of userIds) {
-          const userResults = this.results.get(userId)!;
-          if (userResults.size < pollCount) {
-            allAnswered = false;
-            break;
-          }
+        // Agar hamma javob bermagan bo'lsa, biroz kutamiz
+        if (!allUsersAnswered()) {
+          await delay(1000);
         }
-        if (allAnswered) break;
-
-        await delay(1000);
       } catch (error) {
         console.warn('getUpdates xatosi:', error);
         await delay(2000);
       }
     }
 
-    // Javob bermagan foydalanuvchilar uchun noto'g'ri deb hisoblash
-    for (const userId of userIds) {
-      const userResults = this.results.get(userId)!;
-      for (let i = 0; i < pollCount; i++) {
-        if (!userResults.has(i)) {
-          userResults.set(i, false);
-        }
-      }
-    }
+    // Vaqt tugagan yoki hamma javob bergan
+    return allUsersAnswered();
+  }
 
+  // Barcha natijalarni olish
+  getResults(): Map<string, Map<number, boolean>> {
     return this.results;
+  }
+
+  // Foydalanuvchi uchun kutish holatini tozalash
+  clearUserState(userId: string): void {
+    this.userStates.delete(userId);
   }
 }
 
@@ -174,7 +222,7 @@ class TelegramAPI {
     await this.rateLimiter.waitIfNeeded();
 
     // Uzun savolni xabar sifatida yuborish (endi cheklovni oshiramiz)
-    if (question.length > 400) {
+    if (question.length > 300) {
       await this.sendMessage(
         chatId,
         `<b>Savol: ${question}</b>\n\nJavob variantlarini quyidagi poll’da tanlang.`,
@@ -182,9 +230,9 @@ class TelegramAPI {
       );
     }
 
-    // Savolni 400 belgigacha cheklash (oldingi 255 dan oshirdik)
-    const sanitizedQuestion = this.sanitizePollQuestion(question, 400);
-    const sanitizedOptions = this.sanitizePollOptions(options, 150); // Javoblarni 150 belgigacha cheklash
+    // Savolni 300 belgigacha cheklash (Telegram API cheklovi)
+    const sanitizedQuestion = this.sanitizePollQuestion(question, 300);
+    const sanitizedOptions = this.sanitizePollOptions(options, 100); // Javoblarni 100 belgigacha cheklash (Telegram API cheklovi)
 
     if (sanitizedOptions.length < 2 || sanitizedOptions.length > 10) {
       throw new Error(`Poll variantlari soni 2-10 orasida bo'lishi kerak. Hozir: ${sanitizedOptions.length}`);
@@ -195,7 +243,7 @@ class TelegramAPI {
     }
 
     // Uzun javoblar uchun xabar yuborish
-    if (sanitizedOptions.some(opt => opt.length > 150)) {
+    if (sanitizedOptions.some(opt => opt.length > 100)) {
       const optionsMessage = sanitizedOptions
         .map((opt, idx) => `${String.fromCharCode(65 + idx)}. ${opt}`)
         .join('\n');
@@ -219,7 +267,7 @@ class TelegramAPI {
       explanation_parse_mode: 'HTML',
     };
 
-    const response = await this.makeRequestWithRetry('sendPoll', payload);
+    const response = await this.makeRequestWithRetry<{ poll: { id: string } }>('sendPoll', payload);
     return response.result.poll.id;
   }
 
@@ -250,20 +298,34 @@ class TelegramAPI {
     }
   }
 
-  async getUpdates(offset?: number, allowedUpdates?: string[]): Promise<any[]> {
+  async getUpdates(offset?: number, allowedUpdates?: string[]): Promise<Array<{
+    update_id: number;
+    poll_answer?: {
+      user: { id: number };
+      poll_id: string;
+      option_ids: number[];
+    };
+  }>> {
     await this.rateLimiter.waitIfNeeded();
-    const payload: any = {
+    const payload: TelegramAPIPayload = {
       timeout: 30,
       allowed_updates: allowedUpdates || ['poll_answer'],
     };
     if (offset) {
       payload.offset = offset;
     }
-    const response = await this.makeRequestWithRetry('getUpdates', payload);
+    const response = await this.makeRequestWithRetry<Array<{
+      update_id: number;
+      poll_answer?: {
+        user: { id: number };
+        poll_id: string;
+        option_ids: number[];
+      };
+    }>>('getUpdates', payload);
     return response.result;
   }
 
-  private async makeRequestWithRetry(method: string, payload: any): Promise<any> {
+  private async makeRequestWithRetry<T>(method: string, payload: TelegramAPIPayload): Promise<TelegramAPIResponse<T>> {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
@@ -277,7 +339,7 @@ class TelegramAPI {
           body: JSON.stringify(payload),
         });
 
-        const data = await response.json();
+        const data: TelegramAPIResponse<T> = await response.json();
         if (!response.ok) {
           if (response.status === 429) {
             const retryAfter = data.parameters?.retry_after || Math.pow(2, attempt);
@@ -302,7 +364,7 @@ class TelegramAPI {
     return text.replace(/<(?!\/?(b|i|u|s|a|code|pre)\b)[^>]*>/gi, '').substring(0, 4096).trim();
   }
 
-  private sanitizePollQuestion(question: string, maxLength: number = 300): string {
+  private sanitizePollQuestion(question: string, maxLength: number = 400): string {
     return question.substring(0, maxLength).trim();
   }
 
@@ -440,17 +502,16 @@ export class MultiUserQuizManager {
   }
 }
 
-// Utility functions
-const shuffleArray = <T extends any[]>(arr: T): T => {
-  const array = arr.slice() as T;
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-};
-
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+const shuffleArray = <T>(array: T[]): T[] => {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
+};
 
 const getUserDisplayName = (userInfo: UserInfo): string => {
   if (userInfo.firstName && userInfo.lastName) return `${userInfo.firstName} ${userInfo.lastName}`;
@@ -532,7 +593,8 @@ export const sendQuizToTelegram = async (
   const telegramAPI = new TelegramAPI(config.botToken);
   const quizManager = new MultiUserQuizManager(questions);
   const pollCollector = new PollResultsCollector(telegramAPI);
-  const safeInterval = Math.max(intervalSeconds, 15);
+  // Use the intervalSeconds value directly without enforcing a minimum
+  const safeInterval = Math.max(1, Math.min(intervalSeconds, 300));
 
   try {
     // Session yaratish
@@ -543,17 +605,18 @@ export const sendQuizToTelegram = async (
     const userInfo = await telegramAPI.getUserInfo(config.userId);
     await quizManager.addParticipant(sessionId, userInfo);
 
-    // Boshlang‘ich xabar
+    // Boshlang‘ich xabar (sozlamalar bilan)
     await telegramAPI.sendMessage(
       config.userId,
-      `📝 <b>Test boshlanmoqda!</b>\n` +
-        `🔢 Savollar soni: ${requestedCount}\n` +
-        `⏱ Har bir savol uchun: ${safeInterval} soniya\n` +
-        `✅ Tayyor bo‘lsangiz, birinchi savol kelyapti!`
+      `📝 <b>Test boshlanmoqda!</b>\n\n` +
+      `🔢 Savollar soni: <b>${requestedCount}</b>\n` +
+      `⏱ Har bir savol uchun vaqt: <b>${safeInterval}</b> soniya\n` +
+      `📊 Jami test vaqti: <b>${Math.ceil((requestedCount * safeInterval) / 60)}</b> daqiqa\n\n` +
+      `✅ Tayyor bo‘lsangiz, birinchi savol kelyapti!`
     );
     await delay(2000);
 
-    // Savollarni yuborish
+    // Savollarni yuborish - har bir savol foydalanuvchi javob bergandan keyin
     for (let i = 0; i < session.questions.length; i++) {
       const { question, options, correctAnswer, rowNumber } = session.questions[i];
       const shuffledData = shuffleWithCorrectIndex(options, correctAnswer);
@@ -566,19 +629,24 @@ export const sendQuizToTelegram = async (
         safeInterval,
         rowNumber
       );
-      pollCollector.addPoll(pollId, i, shuffledData.correctIndex, rowNumber);
+      // Foydalanuvchi uchun kutish holatini o'rnatish
+      pollCollector.setUserPollState(config.userId, pollId, i, shuffledData.correctIndex);
 
-      await delay(safeInterval * 1000);
+      // Har bir savol uchun foydalanuvchi javobini kutish
+      await pollCollector.waitForSinglePollResult(
+        [config.userId],
+        safeInterval
+      );
+      
+      // Natijalarni olish
+      const results = pollCollector.getResults();
+      
+      // Natijalarni saqlash
+      quizManager.setSessionResults(sessionId, results);
     }
 
-    // Natijalarni yig‘ish
-    const results = await pollCollector.collectPollResults(
-      [config.userId],
-      session.questions.length,
-      safeInterval,
-      session.questions
-    );
-    quizManager.setSessionResults(sessionId, results);
+    // Barcha savollar tugadi, yakuniy natijalarni olish
+    // Natijalar har bir savol uchun allaqachon saqlangan
 
     // Natijalarni tayyorlash
     const userResult = quizManager.getRankings(sessionId)[0];
@@ -635,7 +703,8 @@ export const sendMultiUserQuizToTelegram = async (
   const telegramAPI = new TelegramAPI(config.botToken);
   const quizManager = new MultiUserQuizManager(questions);
   const pollCollector = new PollResultsCollector(telegramAPI);
-  const safeInterval = Math.max(intervalSeconds, 15);
+  // Use the intervalSeconds value directly without enforcing a minimum
+  const safeInterval = Math.max(1, Math.min(intervalSeconds, 300));
 
   try {
     const sessionId = quizManager.createSession(requestedCount);
@@ -658,13 +727,13 @@ export const sendMultiUserQuizToTelegram = async (
 
     if (validUserIds.length === 0) throw new Error('Hech bir foydalanuvchi topilmadi');
 
-    // Boshlang‘ich xabar
+    // Boshlang‘ich xabar (sozlamalar bilan)
     const startMessage = `
 🧑‍💻 <b>Guruh test boshlanadi!</b>
 👥 Ishtirokchilar: <b>${validUserIds.length}</b> kishi
 📝 Savollar soni: <b>${session.questions.length}</b> ta
 ⏱ Har savol uchun vaqt: <b>${safeInterval}</b> soniya
-🔄 Jami vaqt: <b>${Math.ceil((session.questions.length * safeInterval) / 60)}</b> daqiqa
+📊 Jami test vaqti: <b>${Math.ceil((session.questions.length * safeInterval) / 60)}</b> daqiqa
 🏆 Oxirida reytingga ko‘ra natijalar e‘lon qilinadi!
 🚀 Tayyor bo‘lsangiz, birinchi savol yuboriladi...
 `.trim();
@@ -672,7 +741,7 @@ export const sendMultiUserQuizToTelegram = async (
     await sendMessageToAllUsers(telegramAPI, validUserIds, startMessage);
     await delay(2000);
 
-    // Savollarni yuborish
+    // Savollarni yuborish - har bir savol foydalanuvchilar javob bergandan keyin
     for (let i = 0; i < session.questions.length; i++) {
       const { question, options, correctAnswer, rowNumber } = session.questions[i];
       const shuffledData = shuffleWithCorrectIndex(options, correctAnswer);
@@ -690,7 +759,8 @@ export const sendMultiUserQuizToTelegram = async (
               safeInterval,
               rowNumber
             );
-            pollCollector.addPoll(pollId, i, shuffledData.correctIndex, rowNumber);
+            // Har bir foydalanuvchi uchun kutish holatini o'rnatish
+            pollCollector.setUserPollState(userId, pollId, i, shuffledData.correctIndex);
           } catch (error) {
             console.warn(`Savol ${i + 1} foydalanuvchi ${userId}ga yuborilmadi:`, error);
           }
@@ -699,25 +769,21 @@ export const sendMultiUserQuizToTelegram = async (
         await delay(1000);
       }
 
-      if ((i + 1) % 5 === 0 && i < session.questions.length - 1) {
-        await sendMessageToAllUsers(
-          telegramAPI,
-          validUserIds,
-          `📊 <b>Holat:</b> ${i + 1}/${session.questions.length} savol yuborildi\n⏳ Keyingi savollar yuklanmoqda...`
-        );
-      }
-
-      await delay(safeInterval * 1000);
+      // Har bir savol uchun foydalanuvchilar javobini kutish
+      await pollCollector.waitForSinglePollResult(
+        validUserIds,
+        safeInterval
+      );
+      
+      // Natijalarni olish
+      const results = pollCollector.getResults();
+      
+      // Natijalarni saqlash
+      quizManager.setSessionResults(sessionId, results);
     }
 
-    // Natijalarni yig‘ish
-    const results = await pollCollector.collectPollResults(
-      validUserIds,
-      session.questions.length,
-      safeInterval,
-      session.questions
-    );
-    quizManager.setSessionResults(sessionId, results);
+    // Barcha savollar tugadi, yakuniy natijalarni olish
+    // Natijalar har bir savol uchun allaqachon saqlangan
 
     // Reytingni yuborish
     const rankings = quizManager.getRankings(sessionId);

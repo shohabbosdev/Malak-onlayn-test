@@ -4,7 +4,6 @@ import { parseExcelFile } from '../utils/excelParser';
 import { generateExcelReport } from '../utils/excelParser';
 import { Question, TelegramConfig, TestResult, QuizSettings } from '../types';
 import { sendQuizToTelegram, sendMultiUserQuizToTelegram } from '../utils/telegramService';
-import { generateChartImage } from '../utils/generateChartImage';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
 
@@ -20,6 +19,23 @@ interface FileUploadRef {
   validateConfig: () => boolean;
 }
 
+// Define UserResult interface locally since it's not exported from telegramService
+interface UserInfo {
+  userId: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  startTime: Date;
+  endTime?: Date;
+  isActive: boolean;
+}
+
+interface UserResult extends TestResult {
+  userInfo: UserInfo;
+  completionTime: number;
+  rank?: number;
+}
+
 // Wrap component with forwardRef
 const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) => {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -33,7 +49,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
   });
   const [isSending, setIsSending] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const [quizRankings, setQuizRankings] = useState<any[]>([]);
+  const [quizRankings, setQuizRankings] = useState<UserResult[]>([]);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // Expose validation function via ref
@@ -96,8 +112,8 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
           questionCount: parsedQuestions.length,
         }));
       }
-    } catch (err: any) {
-      setError(err.message || 'Excel faylini yuklashda xatolik yuz berdi');
+    } catch (err) {
+      setError((err as Error).message || 'Excel faylini yuklashda xatolik yuz berdi');
       setFileName('');
       setQuestions([]);
     } finally {
@@ -156,7 +172,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
     try {
       // Check if it's a multi-user scenario (comma-separated user IDs)
       const userIds = config.userId.includes(',') 
-        ? config.userId.split(',').map(id => id.trim()).filter(id => id)
+        ? config.userId.split(',').map((id: string) => id.trim()).filter((id: string) => id)
         : [config.userId];
       
       let result;
@@ -171,8 +187,8 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
         );
         setQuizRankings(rankings);
         // For compatibility, set a summary result
-        const totalCorrect = rankings.reduce((sum: number, r: any) => sum + r.correct, 0);
-        const totalIncorrect = rankings.reduce((sum: number, r: any) => sum + r.incorrect, 0);
+        const totalCorrect = rankings.reduce((sum, r: UserResult) => sum + r.correct, 0);
+        const totalIncorrect = rankings.reduce((sum, r: UserResult) => sum + r.incorrect, 0);
         result = {
           correct: totalCorrect,
           incorrect: totalIncorrect,
@@ -192,8 +208,8 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
       
       setTestResult(result);
       setSuccess('Savollar muvaffaqiyatli yuborildi');
-    } catch (err: any) {
-      setError(err.message || 'Telegram botga yuborishda xatolik yuz berdi');
+    } catch (err) {
+      setError((err as Error).message || 'Telegram botga yuborishda xatolik yuz berdi');
     } finally {
       setIsSending(false);
     }
@@ -203,7 +219,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
   const handleDownloadReport = () => {
     if (quizRankings.length === 0) return;
     
-    const blob = generateExcelReport(quizRankings, 'Guruh Test Natijalari');
+    const blob = generateExcelReport(quizRankings);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -331,7 +347,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
               className="block text-sm font-medium text-gray-300 mb-2 flex items-center"
             >
               <Clock size={16} className="mr-2" />
-              Savollar orasidagi vaqt (soniya):
+              Savollar orasidaki vaqt (soniya):
             </label>
             <div className="flex items-center">
               <input
@@ -355,7 +371,6 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
               Minimal: 1 soniya, Maksimal: 300 soniya
             </p>
           </div>
-
         </div>
       )}
 

@@ -15,6 +15,8 @@ export interface TestResult {
   incorrect: number;
   total: number;
   percentage: number;
+  timeTaken?: number; // Umumiy sarflangan vaqt (soniyada)
+  averageTimePerQuestion?: number; // Har bir savolga sarflangan o'rtacha vaqt
 }
 
 export interface QuizSettings {
