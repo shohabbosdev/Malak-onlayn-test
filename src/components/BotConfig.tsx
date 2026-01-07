@@ -68,7 +68,7 @@ const InputField: React.FC<InputFieldProps> = ({
 );
 
 const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
-  const [isOpen, setIsOpen] = useState(false); // Changed to false - collapsed by default
+  const [isOpen, setIsOpen] = useState(true); // Changed to true - expanded by default
   const [botToken, setBotToken] = useState(config.botToken || '');
   const [userId, setUserId] = useState(config.userId || '');
   const [isEditing, setIsEditing] = useState(!config.botToken || !config.userId);
@@ -121,24 +121,26 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
   }, [isSaved]);
 
   return (
-    <div className="bg-[#2d2b3d] p-6 rounded-lg shadow-lg mb-8 transition-all duration-300">
+    <div className="bg-gradient-to-br from-[#2d2b3d] to-[#3c3a4d] p-6 rounded-xl shadow-lg mb-8 transition-all duration-300 border border-white/10 hover:border-purple-500/30">
       <h3
         className="text-xl font-semibold text-white mb-4 flex items-center justify-between cursor-pointer"
         onClick={() => setIsOpen(!isOpen)}
       >
         <span className="flex items-center">
-          <Bot size={24} className="text-purple-600 mr-2" />
+          <div className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 mr-3">
+            <Bot size={24} className="text-white" />
+          </div>
           Telegram bot uchun sozlamalar
         </span>
         {isOpen ? (
-          <ChevronUp size={20} className="text-white" />
+          <ChevronUp size={24} className="text-purple-400" />
         ) : (
-          <ChevronDown size={20} className="text-white" />
+          <ChevronDown size={24} className="text-purple-400" />
         )}
       </h3>
 
       {isOpen && (
-        <div className="space-y-4">
+        <div className="space-y-5 animate-fadeIn">
           <InputField
             id="botToken"
             label="Bot tokeni"
@@ -146,7 +148,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
             onChange={setBotToken}
             placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
             disabled={!isEditing}
-            icon={<Key size={18} className="text-gray-400" />}
+            icon={<div className="p-1 rounded"><Key size={18} className="text-purple-400" /></div>}
             hint="Bot tokenini @BotFather orqali olishingiz mumkin"
             type={isEditing ? 'text' : 'password'}
             error={errors.botToken}
@@ -159,7 +161,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
             onChange={setUserId}
             placeholder="12345678"
             disabled={!isEditing}
-            icon={<User size={18} className="text-gray-400" />}
+            icon={<div className="p-1 rounded"><User size={18} className="text-blue-400" /></div>}
             hint="User ID-ni @userinfobot orqali olishingiz mumkin"
             error={errors.userId}
           />
@@ -169,7 +171,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
               <button
                 onClick={handleSave}
                 disabled={!botToken || !userId || !!errors.botToken || !!errors.userId}
-                className="flex items-center bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-2.5 px-6 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-purple-500/20"
               >
                 <Save size={18} className="mr-2" />
                 Sozlamalarni saqlash
@@ -177,7 +179,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
             ) : (
               <button
                 onClick={() => setIsEditing(true)}
-                className="flex items-center bg-[#3b3950] hover:bg-[#4d4b63] text-white py-2 px-4 rounded-md transition-colors duration-200"
+                className="flex items-center bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white py-2.5 px-6 rounded-lg transition-all duration-300 shadow-lg hover:shadow-gray-500/20"
               >
                 <Edit size={18} className="mr-2" />
                 Sozlamalarni tahrirlash
@@ -186,8 +188,8 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
           </div>
 
           {isSaved && (
-            <div className="mt-2 text-green-400 text-sm flex items-center">
-              <CheckCircle size={16} className="mr-1" />
+            <div className="mt-3 text-green-400 text-sm flex items-center animate-pulse">
+              <CheckCircle size={18} className="mr-2" />
               Sozlamalar muvaffaqiyatli saqlandi!
             </div>
           )}

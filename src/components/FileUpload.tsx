@@ -256,17 +256,19 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
   };
 
   return (
-    <div className="bg-[#2d2b3d] p-6 rounded-lg shadow-lg mb-8">
+    <div className="bg-gradient-to-br from-[#2d2b3d] to-[#3c3a4d] p-6 rounded-xl shadow-lg mb-8 border border-white/10 hover:border-purple-500/30 transition-all duration-300">
       <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
-        <FileText size={24} className="text-blue-400 mr-2" />
+        <div className="p-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-600 mr-3">
+          <FileText size={24} className="text-white" />
+        </div>
         Test savollarini yuklash qismi
       </h3>
 
       <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${
+        className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ${
           isDragging
-            ? 'border-purple-400 bg-purple-900/20'
-            : 'border-gray-500 hover:border-purple-400'
+            ? 'border-purple-400 bg-gradient-to-br from-purple-900/30 to-purple-800/20 scale-[1.02]' 
+            : 'border-gray-500 hover:border-purple-400 hover:bg-white/5'
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -284,7 +286,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
           aria-hidden="true"
         />
 
-        <Upload size={48} className="mx-auto text-gray-400 mb-4" />
+        <Upload size={48} className="mx-auto text-gray-400 mb-4 transition-transform duration-300 hover:scale-110" />
 
         <h4 className="text-lg font-medium text-white mb-2">
           {isDragging
@@ -354,7 +356,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
                     ),
                   }))
                 }
-                className="w-24 bg-[#3b3950] text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-24 bg-[#3b3950] text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 border border-white/10 transition-all duration-300 hover:border-purple-400"
                 aria-describedby="question-count-desc"
               />
               <span className="ml-2 text-gray-400">
@@ -387,7 +389,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
                     intervalSeconds: Math.min(Math.max(1, parseInt(e.target.value) || 1), 300),
                   }))
                 }
-                className="w-24 bg-[#3b3950] text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-24 bg-[#3b3950] text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 border border-white/10 transition-all duration-300 hover:border-purple-400"
                 aria-describedby="interval-seconds-desc"
               />
               <span className="ml-2 text-gray-400">soniya</span>
@@ -403,7 +405,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
         <button
           onClick={handleSendToTelegram}
           disabled={isSending || !config.botToken || !config.userId}
-          className="w-full flex items-center justify-center bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-3.5 px-4 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-purple-500/30"
         >
           {isSending ? (
             <>
@@ -420,13 +422,13 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
       )}
 
       {testResult && (
-        <div className="mt-6 bg-[#3b3950] rounded-lg p-4">
-          <div className="flex justify-between items-center">
-            <h4 className="text-lg font-medium text-white mb-3">Test natijalari</h4>
+        <div className="mt-6 bg-gradient-to-br from-[#3b3950] to-[#4a485d] rounded-xl p-5 border border-white/10 animate-fadeIn">
+          <div className="flex justify-between items-center mb-4">
+            <h4 className="text-lg font-medium text-white">Test natijalari</h4>
             {quizRankings.length > 0 && (
               <button
                 onClick={handleDownloadReport}
-                className="flex items-center bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded-md text-sm transition-colors duration-200"
+                className="flex items-center bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-1.5 px-4 rounded-lg text-sm transition-all duration-300 shadow-lg hover:shadow-green-500/20"
               >
                 <Download size={16} className="mr-1" />
                 Excel ko'rinishida yuklab olish
@@ -435,25 +437,25 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
           </div>
           
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-green-900/30 p-3 rounded-md">
+            <div className="bg-gradient-to-br from-green-900/40 to-green-800/30 p-4 rounded-lg border border-green-500/20">
               <p className="text-sm text-gray-300">To'g'ri javoblar</p>
               <p className="text-xl font-bold text-green-400">
                 {testResult.correct} ta
               </p>
             </div>
-            <div className="bg-red-900/30 p-3 rounded-md">
+            <div className="bg-gradient-to-br from-red-900/40 to-red-800/30 p-4 rounded-lg border border-red-500/20">
               <p className="text-sm text-gray-300">Noto'g'ri javoblar</p>
               <p className="text-xl font-bold text-red-400">
                 {testResult.incorrect} ta
               </p>
             </div>
-            <div className="bg-blue-900/30 p-3 rounded-md">
+            <div className="bg-gradient-to-br from-blue-900/40 to-blue-800/30 p-4 rounded-lg border border-blue-500/20">
               <p className="text-sm text-gray-300">Jami testlar</p>
               <p className="text-xl font-bold text-blue-400">
                 {testResult.total} ta
               </p>
             </div>
-            <div className="bg-purple-900/30 p-3 rounded-md">
+            <div className="bg-gradient-to-br from-purple-900/40 to-purple-800/30 p-4 rounded-lg border border-purple-500/20">
               <p className="text-sm text-gray-300">O'zlashtirish ko'rsatkichi</p>
               <p className="text-xl font-bold text-purple-400">
                 {testResult.percentage.toFixed(1)}%
