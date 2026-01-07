@@ -65,7 +65,7 @@ function App() {
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-6 text-white">Qo'llanma video</h2>
           <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
-            Tizimdan qanday foydalanishni quyidagi videoda ko'rishning o'z vaqti keladi
+            Tizimdan qanday foydalanishni quyidagi video orqali bilib olishingiz mumkin 📀
           </p>
           <a 
             href="https://www.youtube.com/watch?v=r8XEQn5kqtY" 
