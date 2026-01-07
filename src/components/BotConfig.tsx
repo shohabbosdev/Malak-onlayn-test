@@ -87,7 +87,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
     
     // Validate bot token if provided
     if (botToken && !/^[0-9]+:[A-Za-z0-9\-_]+$/.test(botToken)) {
-      newErrors.botToken = 'Bot tokeni noto‘g‘ri formatda';
+      newErrors.botToken = 'Bot tokeni noto‘g‘ri formatda joylashtirilgan';
     }
     
     // Validate user ID if provided
@@ -98,7 +98,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
       const isGroup = /^-/.test(userId);
       
       if (!isNumericId && !isUsername && !isChannel && !isGroup) {
-        newErrors.userId = 'User ID faqat raqamlardan iborat bo‘lishi kerak (manfiy ham mumkin), @ bilan boshlanadigan username, kanal (@) yoki guruh (-) bo‘lishi kerak';
+        newErrors.userId = 'User ID faqat raqamlardan iborat bo‘lishi kerak (minus ishorali bo\'lishi ham mumkin), @ bilan boshlanadigan username, kanal (@) yoki guruh (-) bo‘lishi kerak';
       }
     }
     
@@ -127,8 +127,8 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
         onClick={() => setIsOpen(!isOpen)}
       >
         <span className="flex items-center">
-          <Bot size={24} className="text-purple-400 mr-2" />
-          TelegramBot sozlamalari
+          <Bot size={24} className="text-purple-600 mr-2" />
+          Telegram bot uchun sozlamalar
         </span>
         {isOpen ? (
           <ChevronUp size={20} className="text-white" />
@@ -188,7 +188,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
           {isSaved && (
             <div className="mt-2 text-green-400 text-sm flex items-center">
               <CheckCircle size={16} className="mr-1" />
-              Muvaffaqiyatli saqlandi!
+              Sozlamalar muvaffaqiyatli saqlandi!
             </div>
           )}
         </div>

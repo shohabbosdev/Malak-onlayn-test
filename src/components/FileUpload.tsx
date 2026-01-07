@@ -156,7 +156,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
 
   const handleSendToTelegram = async () => {
     if (!config.botToken || !config.userId) {
-      setError('Bot token va user ID kiritilmagan');
+      setError('Bot token yoki user ID kiritilmagan');
       return;
     }
 
@@ -259,7 +259,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
     <div className="bg-[#2d2b3d] p-6 rounded-lg shadow-lg mb-8">
       <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
         <FileText size={24} className="text-blue-400 mr-2" />
-        Test savollarini yuklash
+        Test savollarini yuklash qismi
       </h3>
 
       <div
@@ -372,7 +372,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
               className="block text-sm font-medium text-gray-300 mb-2 flex items-center"
             >
               <Clock size={16} className="mr-2" />
-              Savollar orasidaki vaqt (soniya):
+              Savollar orasidagi vaqtlar farqi (soniya):
             </label>
             <div className="flex items-center">
               <input
@@ -429,7 +429,7 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
                 className="flex items-center bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded-md text-sm transition-colors duration-200"
               >
                 <Download size={16} className="mr-1" />
-                Excel yuklab olish
+                Excel ko'rinishida yuklab olish
               </button>
             )}
           </div>
