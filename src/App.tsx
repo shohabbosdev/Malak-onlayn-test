@@ -60,6 +60,29 @@ function App() {
         </div>
       </section>
       
+      {/* YouTube Tutorial Section */}
+      <section className="py-12 bg-gradient-to-r from-purple-900/20 to-indigo-900/20">
+        <div className="container mx-auto px-4 text-center">
+          <h2 className="text-3xl font-bold mb-6 text-white">Qo'llanma video</h2>
+          <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+            Tizimdan qanday foydalanishni quyidagi videoda ko'rishning o'z vaqti keladi
+          </p>
+          <a 
+            href="https://www.youtube.com/watch?v=r8XEQn5kqtY" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-block bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg"
+          >
+            <div className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="mr-3">
+                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+              </svg>
+              YouTube'da tomosha qilish
+            </div>
+          </a>
+        </div>
+      </section>
+      
       {/* Main Content */}
       <section id="how-it-works" className="py-16 bg-black/20">
         <div className="container mx-auto px-4">
