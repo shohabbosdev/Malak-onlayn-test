@@ -21,94 +21,106 @@ function AppContent() {
   }, [config]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#2c3e50] to-[#414f54] text-white">
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 relative overflow-x-hidden selection:bg-indigo-500/30 selection:text-indigo-200">
+      {/* Ambient background glows */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[400px] bg-gradient-to-b from-indigo-500/15 via-purple-500/10 to-transparent blur-3xl pointer-events-none -z-10" />
+      <div className="absolute top-80 right-0 w-[450px] h-[450px] bg-purple-500/10 blur-[120px] pointer-events-none -z-10" />
+      <div className="absolute top-[800px] left-0 w-[400px] h-[400px] bg-blue-500/10 blur-[120px] pointer-events-none -z-10" />
+
       <Header />
       
-      <Routes>
-        <Route path="/" element={
-          <>
-            {/* Hero Section */}
-            <section className="py-16 md:py-24">
-              <div className="container mx-auto px-4 text-center max-w-4xl">
-                <div className="flex justify-center mb-6">
-                  <div className="p-4 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600">
-                    <Bot size={64} className="text-white" />
+      <main className="flex-1">
+        <Routes>
+          <Route path="/" element={
+            <>
+              {/* Hero Section */}
+              <section className="py-16 md:py-20 relative">
+                <div className="container mx-auto px-4 text-center max-w-4xl">
+                  {/* Badge */}
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium mb-6">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                    <span>Telegram Quiz & Excel Platformasi</span>
+                  </div>
+
+                  <h1 className="text-4xl md:text-6xl font-black mb-6 tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
+                    Excel testlarini Telegram guruhlarida jonli o'tkazing
+                  </h1>
+                  
+                  <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed font-normal">
+                    Excel shablonidagi savollarni yuklang, soniyalar ichida Telegram guruh yoki kanallaringizga yuboring va natijalarni real vaqt rejimida kuzating.
+                  </p>
+                  
+                  {/* Features Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 text-left">
+                    <div className="bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-800/80 hover:border-purple-500/40 hover:bg-slate-900/90 transition-all duration-300 shadow-xl group">
+                      <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                        <Upload size={24} className="text-purple-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-1.5">Excel yuklash</h3>
+                      <p className="text-sm text-slate-400 leading-relaxed">Savollarni shablon orqali avtomatik import qiling va tartiblang.</p>
+                    </div>
+                    
+                    <div className="bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-800/80 hover:border-blue-500/40 hover:bg-slate-900/90 transition-all duration-300 shadow-xl group">
+                      <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                        <MessageSquare size={24} className="text-blue-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-1.5">Telegram bot</h3>
+                      <p className="text-sm text-slate-400 leading-relaxed">Guruh va kanallarga jonli teskari hisob bilan avtomatik test uzating.</p>
+                    </div>
+                    
+                    <div className="bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-800/80 hover:border-emerald-500/40 hover:bg-slate-900/90 transition-all duration-300 shadow-xl group">
+                      <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                        <BarChart3 size={24} className="text-emerald-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-1.5">Jonli reyting</h3>
+                      <p className="text-sm text-slate-400 leading-relaxed">Tezlik va to'g'ri javoblar bo'yicha medal va balli Leaderboard oling.</p>
+                    </div>
                   </div>
                 </div>
-                <h1 className="text-4xl md:text-5xl font-bold mb-6 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                  Excel + Telegram bot dasturi
-                </h1>
-                <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-10">
-                  Kerakli shablonga mos excel faylini yuklang va testlarni telegram bot orqali o'tkazing. 
-                  Yakuniy natijalarni real vaqtda kuzating.
-                </p>
-                
-                {/* Features */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
-                  <div className="bg-white/10 backdrop-blur-sm p-6 rounded-xl border border-white/20 hover:bg-white/20 transition-all duration-300">
-                    <Upload size={40} className="mx-auto text-purple-400 mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">Excel yuklash</h3>
-                    <p className="text-gray-300">Test savollarini excel fayl orqali tezda yuklang</p>
-                  </div>
-                  
-                  <div className="bg-white/10 backdrop-blur-sm p-6 rounded-xl border border-white/20 hover:bg-white/20 transition-all duration-300">
-                    <MessageSquare size={40} className="mx-auto text-blue-400 mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">Telegram bot</h3>
-                    <p className="text-gray-300">Testlarni bevosita telegram orqali yuboring</p>
-                  </div>
-                  
-                  <div className="bg-white/10 backdrop-blur-sm p-6 rounded-xl border border-white/20 hover:bg-white/20 transition-all duration-300">
-                    <BarChart3 size={40} className="mx-auto text-green-400 mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">Natijalar</h3>
-                    <p className="text-gray-300">Test natijalarini grafik ko'rinishda kuzating</p>
+              </section>
+              
+              {/* YouTube Tutorial Section */}
+              <section className="py-8">
+                <div className="container mx-auto px-4 max-w-4xl">
+                  <div className="bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-900/50 backdrop-blur-md p-6 md:p-8 rounded-2xl border border-indigo-500/20 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
+                    <div className="text-center sm:text-left">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-1">Video qo'llanma</div>
+                      <h2 className="text-xl font-bold text-white mb-1">Tizimdan foydalanish bo'yicha yo'riqnoma</h2>
+                      <p className="text-sm text-slate-400">Telegram botni sozlash va Excel testlarini o'tkazishni 3 daqiqada o'rganing.</p>
+                    </div>
+                    <a 
+                      href="https://www.youtube.com/watch?v=r8XEQn5kqtY" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2.5 bg-red-600 hover:bg-red-500 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg shadow-red-600/20 shrink-0 text-sm"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+                      </svg>
+                      Videoni ko'rish
+                    </a>
                   </div>
                 </div>
-              </div>
-            </section>
-            
-            {/* YouTube Tutorial Section */}
-            <section className="py-12 bg-gradient-to-r from-purple-900/20 to-indigo-900/20">
-              <div className="container mx-auto px-4 text-center">
-                <h2 className="text-3xl font-bold mb-6 text-white">Qo'llanma video</h2>
-                <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
-                  Tizimdan qanday foydalanishni quyidagi video orqali bilib olishingiz mumkin 📀
-                </p>
-                <a 
-                  href="https://www.youtube.com/watch?v=r8XEQn5kqtY" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-block bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg"
-                >
-                  <div className="flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="mr-3">
-                      <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
-                    </svg>
-                    YouTube'da tomosha qilish
-                  </div>
-                </a>
-              </div>
-            </section>
-            
-            {/* Main Content */}
-            <section id="how-it-works" className="py-16 bg-black/20">
-              <div className="container mx-auto px-4">
-                <div className="max-w-4xl mx-auto">
-                  <div className="grid grid-cols-1 gap-8">
+              </section>
+              
+              {/* Main Content Workspace */}
+              <section id="how-it-works" className="py-12">
+                <div className="container mx-auto px-4 max-w-4xl">
+                  <div className="space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <BotConfig config={config} onConfigChange={setConfig} />
-                      
                       <FileUpload config={config} />
                     </div>
                     
                     <ExcelExample />
                   </div>
                 </div>
-              </div>
-            </section>
-          </>
-        } />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+              </section>
+            </>
+          } />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
       
       <Footer />
       <Chatbot />

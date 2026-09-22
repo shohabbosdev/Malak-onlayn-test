@@ -1,42 +1,24 @@
-import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
-import { Upload, FileText, Check, AlertCircle, Send, Clock, Download } from 'lucide-react';
+import { useState, forwardRef, useImperativeHandle } from 'react';
+import { FileText, Send } from 'lucide-react';
 import { parseExcelFile } from '../utils/excelParser';
-import { generateExcelReport } from '../utils/excelParser';
-import { Question, TelegramConfig, TestResult, QuizSettings } from '../types';
-import { sendQuizToTelegram, sendMultiUserQuizToTelegram, sendGroupQuizToTelegram } from '../utils/telegramService';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import { Pie } from 'react-chartjs-2';
-
-// Chart.js elementlarini ro'yxatdan o'tkazish
-ChartJS.register(ArcElement, Tooltip, Legend);
+import { Question, TelegramConfig, TestResult, QuizSettings, UserResult } from '../types';
+import {
+  sendQuizToTelegram,
+  sendMultiUserQuizToTelegram,
+  sendGroupQuizToTelegram,
+} from '../utils/telegramService';
+import { FileDropzone } from './upload/FileDropzone';
+import { QuizSettingsPanel } from './upload/QuizSettingsPanel';
+import { QuizResultsDashboard } from './upload/QuizResultsDashboard';
 
 interface FileUploadProps {
   config: TelegramConfig;
 }
 
-// Add ref interface
-interface FileUploadRef {
+export interface FileUploadRef {
   validateConfig: () => boolean;
 }
 
-// Define UserResult interface locally since it's not exported from telegramService
-interface UserInfo {
-  userId: string;
-  username?: string;
-  firstName?: string;
-  lastName?: string;
-  startTime: Date;
-  endTime?: Date;
-  isActive: boolean;
-}
-
-interface UserResult extends TestResult {
-  userInfo: UserInfo;
-  completionTime: number;
-  rank?: number;
-}
-
-// Wrap component with forwardRef
 const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [fileName, setFileName] = useState<string>('');
@@ -46,50 +28,29 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
   const [quizSettings, setQuizSettings] = useState<QuizSettings>({
     questionCount: 5,
     intervalSeconds: 30,
+    countdownSeconds: 5,
   });
   const [isSending, setIsSending] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [quizRankings, setQuizRankings] = useState<UserResult[]>([]);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
 
-  // Expose validation function via ref
   useImperativeHandle(ref, () => ({
-    validateConfig: () => {
-      return !!(config.botToken && config.userId);
-    }
+    validateConfig: () => !!(config.botToken && config.userId),
   }));
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileSelect = () => {
-    fileInputRef.current?.click();
-  };
-
-  const validateFile = (file: File): string | null => {
-    const validTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-    ];
-    const maxSize = 10 * 1024 * 1024; // 10MB
-
-    if (!validTypes.includes(file.type)) {
-      return "Faqat .xlsx yoki .xls formatidagi fayllar qabul qilinadi";
-    }
-    if (file.size > maxSize) {
-      return "Fayl hajmi 10MB dan katta bo'lmasligi kerak";
+  // Ekran uxlab qolishining oldini olish (Wake Lock API - 1-kreativ g'oya)
+  const acquireWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator) {
+        return await (navigator as any).wakeLock.request('screen');
+      }
+    } catch {
+      // Brauzer qo'llab-quvvatlamasa, tinch davom etadi
     }
     return null;
   };
 
   const handleFileChange = async (file: File) => {
-    const validationError = validateFile(file);
-    if (validationError) {
-      setError(validationError);
-      setFileName('');
-      setQuestions([]);
-      return;
-    }
-
     setIsUploading(true);
     setError('');
     setSuccess('');
@@ -118,45 +79,12 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
       setQuestions([]);
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
-  };
-
-  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      await handleFileChange(file);
-    }
-  };
-
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      await handleFileChange(file);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
   };
 
   const handleSendToTelegram = async () => {
     if (!config.botToken || !config.userId) {
-      setError('Bot token yoki user ID kiritilmagan');
+      setError('Bot token va user ID kiritilmagan');
       return;
     }
 
@@ -169,367 +97,139 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
     setError('');
     setSuccess('');
 
+    let wakeLockSentinel: any = null;
+
     try {
-      // Check if it's a multi-user scenario (comma-separated user IDs)
-      const userIds = config.userId.includes(',') 
+      wakeLockSentinel = await acquireWakeLock();
+
+      const userIds = config.userId.includes(',')
         ? config.userId.split(',').map((id: string) => id.trim()).filter((id: string) => id)
         : [config.userId];
-      
-      let result;
-      // Check if it's a channel (starts with @)
+
+      let result: TestResult;
       const isChannel = config.userId.startsWith('@');
-      // Check if it's a group (starts with -)
       const isGroup = config.userId.startsWith('-');
-      
+      const countdown = quizSettings.countdownSeconds ?? 5;
+
       if (isChannel) {
-        // Channel quiz - use group-specific functionality for sequential sending
         result = await sendGroupQuizToTelegram(
           questions,
           config,
           config.userId,
           quizSettings.questionCount,
-          quizSettings.intervalSeconds
+          quizSettings.intervalSeconds,
+          countdown
         );
-        setQuizRankings([]); // Clear rankings for channel
+        setQuizRankings([]);
       } else if (isGroup) {
-        // Group quiz - use group-specific functionality
         result = await sendGroupQuizToTelegram(
           questions,
           config,
           config.userId,
           quizSettings.questionCount,
-          quizSettings.intervalSeconds
+          quizSettings.intervalSeconds,
+          countdown
         );
-        setQuizRankings([]); // Clear rankings for group
+        setQuizRankings([]);
       } else if (userIds.length > 1) {
-        // Multi-user quiz
         const { rankings } = await sendMultiUserQuizToTelegram(
           questions,
           config,
           userIds,
           quizSettings.questionCount,
-          quizSettings.intervalSeconds
+          quizSettings.intervalSeconds,
+          countdown
         );
         setQuizRankings(rankings);
-        // For compatibility, set a summary result
-        const totalCorrect = rankings.reduce((sum, r: UserResult) => sum + r.correct, 0);
-        const totalIncorrect = rankings.reduce((sum, r: UserResult) => sum + r.incorrect, 0);
+        const totalCorrect = rankings.reduce((sum, r) => sum + r.correct, 0);
+        const totalIncorrect = rankings.reduce((sum, r) => sum + r.incorrect, 0);
         result = {
           correct: totalCorrect,
           incorrect: totalIncorrect,
           total: rankings[0]?.total || 0,
-          percentage: rankings.length > 0 ? (totalCorrect / (totalCorrect + totalIncorrect)) * 100 : 0
+          percentage: rankings.length > 0 ? (totalCorrect / (totalCorrect + totalIncorrect)) * 100 : 0,
         };
       } else {
-        // Single user quiz
         result = await sendQuizToTelegram(
           questions,
           config,
           quizSettings.questionCount,
-          quizSettings.intervalSeconds
+          quizSettings.intervalSeconds,
+          countdown
         );
-        setQuizRankings([]); // Clear rankings for single user
+        setQuizRankings([]);
       }
-      
+
       setTestResult(result);
       setSuccess('Savollar muvaffaqiyatli yuborildi');
     } catch (err) {
       setError((err as Error).message || 'Telegram botga yuborishda xatolik yuz berdi');
     } finally {
+      if (wakeLockSentinel) {
+        wakeLockSentinel.release().catch(() => {});
+      }
       setIsSending(false);
     }
   };
 
-  // Add function to download Excel report
-  const handleDownloadReport = () => {
-    if (quizRankings.length === 0) return;
-    
-    const blob = generateExcelReport(quizRankings);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `test_natijalari_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   return (
-    <div className="bg-gradient-to-br from-[#2d2b3d] to-[#3c3a4d] p-6 rounded-xl shadow-lg mb-8 border border-white/10 hover:border-purple-500/30 transition-all duration-300">
-      <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
-        <div className="p-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-600 mr-3">
-          <FileText size={24} className="text-white" />
+    <div className="bg-slate-900/60 backdrop-blur-md p-6 sm:p-7 rounded-2xl shadow-xl transition-all duration-300 border border-slate-800/80 hover:border-indigo-500/30">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-md shadow-indigo-500/20">
+          <FileText size={22} className="text-white" />
         </div>
-        Test savollarini yuklash qismi
-      </h3>
-
-      <div
-        className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ${
-          isDragging
-            ? 'border-purple-400 bg-gradient-to-br from-purple-900/30 to-purple-800/20 scale-[1.02]' 
-            : 'border-gray-500 hover:border-purple-400 hover:bg-white/5'
-        }`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={handleFileSelect}
-        role="region"
-        aria-describedby="file-upload-desc"
-      >
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileInputChange}
-          accept=".xlsx,.xls"
-          className="hidden"
-          aria-hidden="true"
-        />
-
-        <Upload size={48} className="mx-auto text-gray-400 mb-4 transition-transform duration-300 hover:scale-110" />
-
-        <h4 className="text-lg font-medium text-white mb-2">
-          {isDragging
-            ? 'Faylni bu yerga tashlang'
-            : 'Excel faylini yuklang yoki sudrab keling'}
-        </h4>
-
-        <p id="file-upload-desc" className="text-gray-400 text-sm">
-          .xlsx yoki .xls formatidagi fayllar qabul qilinadi (maksimal 10MB)
-        </p>
+        <div>
+          <h3 className="text-base font-bold text-white tracking-tight">Test savollarini yuklash</h3>
+          <p className="text-xs text-slate-400">Excel fayl tanlang va parametrlarni belgilang</p>
+        </div>
       </div>
 
-      {isUploading && (
-        <div className="flex justify-center my-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
-        </div>
-      )}
+      {/* 1. Fayl yuklash zonasi */}
+      <FileDropzone
+        fileName={fileName}
+        questionCount={questions.length}
+        isUploading={isUploading}
+        error={error}
+        success={success}
+        onFileChange={handleFileChange}
+      />
 
-      {error && (
-        <div className="bg-red-900/30 border border-red-500 text-red-200 px-4 py-3 rounded-md mb-4 flex items-start">
-          <AlertCircle size={20} className="mr-2 mt-0.5 flex-shrink-0" />
-          <p>{error}</p>
-        </div>
-      )}
-
-      {success && (
-        <div className="bg-green-900/30 border border-green-500 text-green-200 px-4 py-3 rounded-md mb-4 flex items-start">
-          <Check size={20} className="mr-2 mt-0.5 flex-shrink-0" />
-          <p>{success}</p>
-        </div>
-      )}
-
-      {fileName && (
-        <div className="mb-6">
-          <div className="bg-[#3b3950] rounded-lg p-4 flex items-center">
-            <FileText size={24} className="text-blue-400 mr-3" />
-            <div>
-              <p className="text-white font-medium">{fileName}</p>
-              <p className="text-gray-400 text-sm">{questions.length} ta savol</p>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* 2. Test sozlamalari paneli */}
       {questions.length > 0 && (
-        <div className="space-y-6 mb-6">
-          <div>
-            <label
-              htmlFor="questionCount"
-              className="block text-sm font-medium text-gray-300 mb-2"
-            >
-              Yuborilishi kerak bo'lgan savollar soni:
-            </label>
-            <div className="flex items-center">
-              <input
-                id="questionCount"
-                type="number"
-                min={1}
-                max={questions.length}
-                value={quizSettings.questionCount}
-                onChange={(e) =>
-                  setQuizSettings((prev) => ({
-                    ...prev,
-                    questionCount: Math.min(
-                      Math.max(1, parseInt(e.target.value) || 1),
-                      questions.length
-                    ),
-                  }))
-                }
-                className="w-24 bg-[#3b3950] text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 border border-white/10 transition-all duration-300 hover:border-purple-400"
-                aria-describedby="question-count-desc"
-              />
-              <span className="ml-2 text-gray-400">
-                / {questions.length} ta savol
-              </span>
-            </div>
-            <p id="question-count-desc" className="text-xs text-gray-400 mt-1">
-              Maksimal {questions.length} ta savol tanlash mumkin
-            </p>
-          </div>
-
-          <div>
-            <label
-              htmlFor="intervalSeconds"
-              className="block text-sm font-medium text-gray-300 mb-2 flex items-center"
-            >
-              <Clock size={16} className="mr-2" />
-              Savollar orasidagi vaqtlar farqi (soniya):
-            </label>
-            <div className="flex items-center">
-              <input
-                id="intervalSeconds"
-                type="number"
-                min="1"
-                max="300"
-                value={quizSettings.intervalSeconds}
-                onChange={(e) =>
-                  setQuizSettings((prev) => ({
-                    ...prev,
-                    intervalSeconds: Math.min(Math.max(1, parseInt(e.target.value) || 1), 300),
-                  }))
-                }
-                className="w-24 bg-[#3b3950] text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 border border-white/10 transition-all duration-300 hover:border-purple-400"
-                aria-describedby="interval-seconds-desc"
-              />
-              <span className="ml-2 text-gray-400">soniya</span>
-            </div>
-            <p id="interval-seconds-desc" className="text-xs text-gray-400 mt-1">
-              Minimal: 1 soniya, Maksimal: 300 soniya
-            </p>
-          </div>
-        </div>
+        <QuizSettingsPanel
+          totalAvailableQuestions={questions.length}
+          settings={quizSettings}
+          onSettingsChange={setQuizSettings}
+        />
       )}
 
+      {/* 3. Yuborish tugmasi */}
       {questions.length > 0 && (
         <button
           onClick={handleSendToTelegram}
           disabled={isSending || !config.botToken || !config.userId}
-          className="w-full flex items-center justify-center bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-3.5 px-4 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-purple-500/30"
+          className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white py-3.5 px-6 rounded-xl text-sm font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-[0.99]"
         >
           {isSending ? (
             <>
-              <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white mr-2"></div>
-              Yuborilmoqda...
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+              <span>Test o'tkazilmoqda...</span>
             </>
           ) : (
             <>
-              <Send size={18} className="mr-2" />
-              Telegram botga yuborish
+              <Send size={16} />
+              <span>Telegram botga yuborish</span>
             </>
           )}
         </button>
       )}
 
+      {/* 4. Natijalar paneli */}
       {testResult && (
-        <div className="mt-6 bg-gradient-to-br from-[#3b3950] to-[#4a485d] rounded-xl p-5 border border-white/10 animate-fadeIn">
-          <div className="flex justify-between items-center mb-4">
-            <h4 className="text-lg font-medium text-white">Test natijalari</h4>
-            {quizRankings.length > 0 && (
-              <button
-                onClick={handleDownloadReport}
-                className="flex items-center bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-1.5 px-4 rounded-lg text-sm transition-all duration-300 shadow-lg hover:shadow-green-500/20"
-              >
-                <Download size={16} className="mr-1" />
-                Excel ko'rinishida yuklab olish
-              </button>
-            )}
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gradient-to-br from-green-900/40 to-green-800/30 p-4 rounded-lg border border-green-500/20">
-              <p className="text-sm text-gray-300">To'g'ri javoblar</p>
-              <p className="text-xl font-bold text-green-400">
-                {testResult.correct} ta
-              </p>
-            </div>
-            <div className="bg-gradient-to-br from-red-900/40 to-red-800/30 p-4 rounded-lg border border-red-500/20">
-              <p className="text-sm text-gray-300">Noto'g'ri javoblar</p>
-              <p className="text-xl font-bold text-red-400">
-                {testResult.incorrect} ta
-              </p>
-            </div>
-            <div className="bg-gradient-to-br from-blue-900/40 to-blue-800/30 p-4 rounded-lg border border-blue-500/20">
-              <p className="text-sm text-gray-300">Jami testlar</p>
-              <p className="text-xl font-bold text-blue-400">
-                {testResult.total} ta
-              </p>
-            </div>
-            <div className="bg-gradient-to-br from-purple-900/40 to-purple-800/30 p-4 rounded-lg border border-purple-500/20">
-              <p className="text-sm text-gray-300">O'zlashtirish ko'rsatkichi</p>
-              <p className="text-xl font-bold text-purple-400">
-                {testResult.percentage.toFixed(1)}%
-              </p>
-            </div>
-          </div>
-          
-          {/* Pie grafik */}
-          <div className="mt-6">
-            <h5 className="text-white text-lg mb-2">Grafik ko‘rinishda:</h5>
-            <div className="flex justify-center">
-              <Pie
-                data={{
-                  labels: ['To‘g‘ri', 'Noto‘g‘ri'],
-                  datasets: [
-                    {
-                      data: [testResult.correct, testResult.incorrect],
-                      backgroundColor: ['#22c55e', '#ef4444'],
-                      borderWidth: 1,
-                    },
-                  ],
-                }}
-                options={{
-                  responsive: true,
-                  plugins: {
-                    legend: {
-                      position: 'bottom',
-                    },
-                  },
-                }}
-              />
-            </div>
-          </div>
-          
-          {/* Display rankings for multi-user quizzes */}
-          {quizRankings.length > 0 && (
-            <div className="mt-6">
-              <h5 className="text-white text-lg mb-2">Ishtirokchilar reytingi:</h5>
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-[#2d2b3d] text-white rounded-lg overflow-hidden">
-                  <thead>
-                    <tr className="bg-[#3b3950]">
-                      <th className="py-2 px-3 text-left">O'rin</th>
-                      <th className="py-2 px-3 text-left">Foydalanuvchi</th>
-                      <th className="py-2 px-3 text-left">To'g'ri</th>
-                      <th className="py-2 px-3 text-left">Foiz</th>
-                      <th className="py-2 px-3 text-left">Vaqt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {quizRankings.map((ranking, index) => (
-                      <tr 
-                        key={ranking.userInfo.userId} 
-                        className={index % 2 === 0 ? 'bg-[#332f45]' : 'bg-[#2d2b3d]'}
-                      >
-                        <td className="py-2 px-3">{index + 1}</td>
-                        <td className="py-2 px-3">
-                          {ranking.userInfo.firstName && ranking.userInfo.lastName 
-                            ? `${ranking.userInfo.firstName} ${ranking.userInfo.lastName}`
-                            : ranking.userInfo.username 
-                              ? `@${ranking.userInfo.username}`
-                              : `User${ranking.userInfo.userId?.slice(-4)}`}
-                        </td>
-                        <td className="py-2 px-3">{ranking.correct}/{ranking.total}</td>
-                        <td className="py-2 px-3">{ranking.percentage.toFixed(1)}%</td>
-                        <td className="py-2 px-3">{ranking.completionTime}s</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
+        <QuizResultsDashboard
+          testResult={testResult}
+          quizRankings={quizRankings}
+        />
       )}
     </div>
   );

@@ -34,11 +34,11 @@ const InputField: React.FC<InputFieldProps> = ({
   error,
 }) => (
   <div className="relative">
-    <label htmlFor={id} className="block text-sm font-medium text-gray-300 mb-1">
+    <label htmlFor={id} className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
       {label}
     </label>
-    <div className="flex">
-      <div className="flex items-center bg-[#3b3950] rounded-l-md p-2 border-r border-gray-600">
+    <div className="flex rounded-xl overflow-hidden border border-slate-800 bg-slate-950/60 focus-within:border-indigo-500/80 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
+      <div className="flex items-center bg-slate-900/80 px-3 text-slate-400 border-r border-slate-800">
         {icon}
       </div>
       <input
@@ -48,19 +48,19 @@ const InputField: React.FC<InputFieldProps> = ({
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         placeholder={placeholder}
-        className={`w-full bg-[#17161c] text-white p-2 rounded-r-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 ${
-          error ? 'border border-red-500' : ''
+        className={`w-full bg-transparent text-white px-3.5 py-2.5 text-sm placeholder-slate-500 focus:outline-none disabled:opacity-50 ${
+          error ? 'border-red-500' : ''
         }`}
         aria-invalid={!!error}
         aria-describedby={`${id}-hint`}
       />
     </div>
-    <p id={`${id}-hint`} className="text-xs text-gray-400 mt-1">
+    <p id={`${id}-hint`} className="text-[11px] text-slate-400 mt-1">
       {hint}
     </p>
     {error && (
-      <p className="text-xs text-red-400 mt-1 flex items-center">
-        <AlertCircle size={14} className="mr-1" />
+      <p className="text-xs text-rose-400 mt-1 flex items-center font-medium">
+        <AlertCircle size={13} className="mr-1 shrink-0" />
         {error}
       </p>
     )}
@@ -121,26 +121,27 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
   }, [isSaved]);
 
   return (
-    <div className="bg-gradient-to-br from-[#2d2b3d] to-[#3c3a4d] p-6 rounded-xl shadow-lg mb-8 transition-all duration-300 border border-white/10 hover:border-purple-500/30">
-      <h3
-        className="text-xl font-semibold text-white mb-4 flex items-center justify-between cursor-pointer"
+    <div className="bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl shadow-xl transition-all duration-300 border border-slate-800/80 hover:border-indigo-500/30">
+      <div
+        className="flex items-center justify-between cursor-pointer select-none mb-4"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <span className="flex items-center">
-          <div className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 mr-3">
-            <Bot size={24} className="text-white" />
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-md shadow-indigo-500/20">
+            <Bot size={22} className="text-white" />
           </div>
-          Telegram bot uchun sozlamalar
-        </span>
-        {isOpen ? (
-          <ChevronUp size={24} className="text-purple-400" />
-        ) : (
-          <ChevronDown size={24} className="text-purple-400" />
-        )}
-      </h3>
+          <div>
+            <h3 className="text-base font-bold text-white tracking-tight">Telegram bot sozlamalari</h3>
+            <p className="text-xs text-slate-400">Token va qabul qiluvchi ID ma'lumotlari</p>
+          </div>
+        </div>
+        <div className="p-1.5 rounded-lg bg-slate-800/50 text-slate-400 hover:text-white transition-colors">
+          {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </div>
+      </div>
 
       {isOpen && (
-        <div className="space-y-5 animate-fadeIn">
+        <div className="space-y-4 pt-2 border-t border-slate-800/80 animate-fadeIn">
           <InputField
             id="botToken"
             label="Bot tokeni"
@@ -148,7 +149,7 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
             onChange={setBotToken}
             placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
             disabled={!isEditing}
-            icon={<div className="p-1 rounded"><Key size={18} className="text-purple-400" /></div>}
+            icon={<Key size={16} className="text-indigo-400" />}
             hint="Bot tokenini @BotFather orqali olishingiz mumkin"
             type={isEditing ? 'text' : 'password'}
             error={errors.botToken}
@@ -156,41 +157,41 @@ const BotConfig: React.FC<BotConfigProps> = ({ config, onConfigChange }) => {
 
           <InputField
             id="userId"
-            label="User ID"
+            label="User / Guruh ID"
             value={userId}
             onChange={setUserId}
-            placeholder="12345678"
+            placeholder="-1001234567890 yoki 12345678"
             disabled={!isEditing}
-            icon={<div className="p-1 rounded"><User size={18} className="text-blue-400" /></div>}
-            hint="User ID-ni @userinfobot orqali olishingiz mumkin"
+            icon={<User size={16} className="text-indigo-400" />}
+            hint="Guruh uchun -100 bilan boshlanadi, shaxsiy chat uchun @userinfobot"
             error={errors.userId}
           />
 
-          <div className="flex justify-end mt-4">
+          <div className="flex justify-end pt-2">
             {isEditing ? (
               <button
                 onClick={handleSave}
                 disabled={!botToken || !userId || !!errors.botToken || !!errors.userId}
-                className="flex items-center bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-2.5 px-6 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-purple-500/20"
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white text-sm font-semibold py-2.5 px-5 rounded-xl transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40"
               >
-                <Save size={18} className="mr-2" />
+                <Save size={16} />
                 Sozlamalarni saqlash
               </button>
             ) : (
               <button
                 onClick={() => setIsEditing(true)}
-                className="flex items-center bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white py-2.5 px-6 rounded-lg transition-all duration-300 shadow-lg hover:shadow-gray-500/20"
+                className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm font-medium py-2 px-4 rounded-xl transition-all duration-200 shadow-md"
               >
-                <Edit size={18} className="mr-2" />
-                Sozlamalarni tahrirlash
+                <Edit size={16} />
+                Tahrirlash
               </button>
             )}
           </div>
 
           {isSaved && (
-            <div className="mt-3 text-green-400 text-sm flex items-center animate-pulse">
-              <CheckCircle size={18} className="mr-2" />
-              Sozlamalar muvaffaqiyatli saqlandi!
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center font-medium animate-fadeIn">
+              <CheckCircle size={16} className="mr-2 shrink-0" />
+              Sozlamalar brauzerda muvaffaqiyatli saqlandi!
             </div>
           )}
         </div>
