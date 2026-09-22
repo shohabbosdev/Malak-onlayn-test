@@ -251,6 +251,13 @@ class TelegramAPI {
     await this.makeRequestWithRetry('sendMessage', payload);
   }
 
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   async sendPoll(
     chatId: string,
     question: string,
@@ -261,42 +268,76 @@ class TelegramAPI {
   ): Promise<string> {
     await this.rateLimiter.waitIfNeeded();
 
-    // Uzun savolni xabar sifatida yuborish (endi cheklovni oshiramiz)
-    if (question.length > 300) {
-      await this.sendMessage(
-        chatId,
-        `<b>Savol: ${question}</b>\n\nJavob variantlarini quyidagi poll’da tanlang.`,
-        'HTML'
-      );
+    // 1. Variantlar va savol uzunligini tekshirish
+    // Telegram API: question max 300 ta belgi, har bir poll option max 100 ta belgi
+    const isLongQuestion = question.length > 280;
+    const hasLongOptions = options.some((opt) => String(opt || '').trim().length > 90);
+
+    // 2. Agar savol yoki variantlar uzun bo'lsa, to'liq matnni avval xabar sifatida yuborish
+    if (isLongQuestion || hasLongOptions) {
+      let fullMessage = `📋 <b>Savol va variantlar:</b>\n\n<b>Savol:</b>\n${this.escapeHtml(question)}\n\n<b>Javob variantlari:</b>\n`;
+
+      options.forEach((opt, idx) => {
+        const letter = String.fromCharCode(65 + idx); // A, B, C, D...
+        fullMessage += `<b>${letter})</b> ${this.escapeHtml(opt)}\n\n`;
+      });
+
+      fullMessage += `<i>Javobingizni quyidagi so‘rovnomada tanlang 👇</i>`;
+
+      // Telegram xabari uzunlik chegarasi (4096 belgi)
+      if (fullMessage.length > 4000) {
+        await this.sendMessage(chatId, `📝 <b>Savol:</b>\n${this.escapeHtml(question)}`, 'HTML');
+        let optionsMsg = `<b>Javob variantlari:</b>\n\n`;
+        options.forEach((opt, idx) => {
+          const letter = String.fromCharCode(65 + idx);
+          optionsMsg += `<b>${letter})</b> ${this.escapeHtml(opt)}\n\n`;
+        });
+        await this.sendMessage(chatId, optionsMsg, 'HTML');
+      } else {
+        await this.sendMessage(chatId, fullMessage, 'HTML');
+      }
     }
 
-    // Savolni 300 belgigacha cheklash (Telegram API cheklovi)
-    const sanitizedQuestion = this.sanitizePollQuestion(question, 300);
-    const sanitizedOptions = this.sanitizePollOptions(options, 100); // Javoblarni 100 belgigacha cheklash (Telegram API cheklovi)
+    // 3. Poll uchun savolni tayyorlash (maksimal 300 belgi)
+    let sanitizedQuestion = question.trim();
+    if (sanitizedQuestion.length > 300) {
+      sanitizedQuestion = sanitizedQuestion.substring(0, 297) + '...';
+    }
 
-    if (sanitizedOptions.length < 2 || sanitizedOptions.length > 10) {
-      throw new Error(`Poll variantlari soni 2-10 orasida bo'lishi kerak. Hozir: ${sanitizedOptions.length}`);
+    // 4. Poll uchun variantlarni tayyorlash (har biri maksimal 100 belgi)
+    let sanitizedOptions = options.map((opt, idx) => {
+      const cleanOpt = String(opt || '').trim();
+      const letter = String.fromCharCode(65 + idx);
+
+      if (hasLongOptions) {
+        const alreadyHasLetter = /^[A-Z][\.\)\-]/i.test(cleanOpt);
+        const prefix = alreadyHasLetter ? '' : `${letter}) `;
+        const maxLen = 100 - prefix.length;
+
+        if (cleanOpt.length > maxLen) {
+          return `${prefix}${cleanOpt.substring(0, maxLen - 3)}...`;
+        }
+        return `${prefix}${cleanOpt}`;
+      } else {
+        return cleanOpt.length > 100 ? cleanOpt.substring(0, 97) + '...' : cleanOpt;
+      }
+    });
+
+    if (sanitizedOptions.length < 2) {
+      throw new Error(`Poll variantlari soni kamida 2 ta bo'lishi kerak. Hozir: ${sanitizedOptions.length}`);
+    }
+
+    if (sanitizedOptions.length > 10) {
+      sanitizedOptions = sanitizedOptions.slice(0, 10);
     }
 
     if (correctOptionId < 0 || correctOptionId >= sanitizedOptions.length) {
       throw new Error(`To'g'ri javob indeksi noto'g'ri: ${correctOptionId}`);
     }
 
-    // Uzun javoblar uchun xabar yuborish
-    if (sanitizedOptions.some(opt => opt.length > 100)) {
-      const optionsMessage = sanitizedOptions
-        .map((opt, idx) => `${String.fromCharCode(65 + idx)}. ${opt}`)
-        .join('\n');
-      await this.sendMessage(
-        chatId,
-        `<b>Javob variantlari:</b>\n${optionsMessage}`,
-        'HTML'
-      );
-    }
-
     // Kanallar va guruhlarga yuboriladigan pollar anonim bo'lishi kerak
     const isChannelOrGroup = chatId.startsWith('@') || chatId.startsWith('-100') || chatId.startsWith('-');
-    
+
     const payload = {
       chat_id: chatId,
       question: sanitizedQuestion,
@@ -587,6 +628,19 @@ const shuffleArray = <T>(array: T[]): T[] => {
   return newArray;
 };
 
+const generateProgressBar = (percentage: number, totalBlocks: number = 10): string => {
+  const filled = Math.min(totalBlocks, Math.max(0, Math.round((percentage / 100) * totalBlocks)));
+  const empty = totalBlocks - filled;
+  const fillChar = percentage >= 75 ? '🟩' : percentage >= 50 ? '🟨' : '🟥';
+  return `${fillChar.repeat(filled)}${'⬜'.repeat(empty)}`;
+};
+
+const formatTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
 const getUserDisplayName = (userInfo: UserInfo): string => {
   if (userInfo.firstName && userInfo.lastName) return `${userInfo.firstName} ${userInfo.lastName}`;
   if (userInfo.firstName) return userInfo.firstName;
@@ -595,37 +649,59 @@ const getUserDisplayName = (userInfo: UserInfo): string => {
 };
 
 const generateRankingMessage = (rankings: UserResult[]): string => {
-  let message = `
-🏆 <b>TEST NATIJALARI VA REYTING</b>
-📊 <b>Ishtirokchilar reytingi:</b>
-`.trim();
+  if (!rankings || rankings.length === 0) {
+    return '📊 <b>Ishtirokchilar natijalari mavjud emas.</b>';
+  }
 
-  rankings.forEach((result, index) => {
-    const emoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+  let message = `🏆 <b>TEST NATIJALARI VA YAKUNIY REYTING</b>\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  // Top 3 g'oliblar uchun kengaytirilgan vizual kartochkalar
+  const topThree = rankings.slice(0, 3);
+  topThree.forEach((result, index) => {
+    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉';
+    const rankTitle = `${index + 1}-o‘rin`;
     const name = getUserDisplayName(result.userInfo);
-    const completionTimeMin = Math.floor(result.completionTime / 60);
-    const completionTimeSec = result.completionTime % 60;
+    const progressBar = generateProgressBar(result.percentage);
+    const timeStr = formatTime(result.completionTime);
 
-    message += `
-${emoji} <b>${name}</b>
-   💯 ${result.percentage.toFixed(1)}% (${result.correct}/${result.total})
-   ⏱ ${completionTimeMin}:${completionTimeSec.toString().padStart(2, '0')}
-`;
+    message += `${medal} <b>${rankTitle}: ${name}</b>\n`;
+    message += `┣ 🎯 Natija: <b>${result.correct} / ${result.total}</b> (${result.percentage.toFixed(1)}%)\n`;
+    message += `┣ ⏱ Vaqt: <b>${timeStr}</b>\n`;
+    message += `┗ 📊 ${progressBar}\n\n`;
   });
 
-  const averagePercentage = rankings.length > 0 ? (rankings.reduce((sum, r) => sum + r.percentage, 0) / rankings.length).toFixed(1) : '0';
-  const minCompletionTime = rankings.length > 0 ? Math.min(...rankings.map((r) => r.completionTime)) : 0;
+  // 4-o'rindan keyingi ishtirokchilar (agar bo'lsa)
+  const others = rankings.slice(3, 20);
+  if (others.length > 0) {
+    message += `📋 <b>Boshqa ishtirokchilar:</b>\n`;
+    others.forEach((result, idx) => {
+      const rankNum = idx + 4;
+      const name = getUserDisplayName(result.userInfo);
+      const timeStr = formatTime(result.completionTime);
+      message += `${rankNum}. <b>${name}</b> — ${result.correct}/${result.total} (${result.percentage.toFixed(1)}%) | ⏱ ${timeStr}\n`;
+    });
+    if (rankings.length > 20) {
+      message += `<i>...va yana ${rankings.length - 20} nafar ishtirokchi</i>\n`;
+    }
+    message += `\n`;
+  }
 
-  message += `
-📈 <b>Statistika:</b>
-• Eng yuqori natija: ${rankings[0]?.percentage.toFixed(1) || 0}%
-• O'rtacha natija: ${averagePercentage}%
-• Eng tez tugatgan: ${minCompletionTime}s
-🎉 Barcha ishtirokchilarga tabriklar!
-👨‍💻 @testoakbot | 📚 Bilimingizni oshirishda davom eting!
-`.trim();
+  // Guruh bo'yicha tahliliy statistika
+  const totalUsers = rankings.length;
+  const avgPercentage = (rankings.reduce((sum, r) => sum + r.percentage, 0) / totalUsers).toFixed(1);
+  const bestResult = rankings[0];
+  const minTimeSec = Math.min(...rankings.map((r) => r.completionTime));
 
-  return message;
+  message += `━━━━━━━━━━━━━━━━━━━━\n`;
+  message += `📈 <b>Umumiy statistika:</b>\n`;
+  message += `• Jami ishtirokchilar: <b>${totalUsers} kishi</b>\n`;
+  message += `• O‘rtacha o‘zlashtirish: <b>${avgPercentage}%</b>\n`;
+  message += `• Eng yuqori natija: <b>${bestResult.percentage.toFixed(1)}%</b> (${bestResult.correct}/${bestResult.total})\n`;
+  message += `• Eng tez ishlangan vaqt: <b>${formatTime(minTimeSec)}</b>\n\n`;
+  message += `🎉 <i>Barcha ishtirokchilarga rahmat! Bilimingiz ziyoda bo‘lsin!</i>\n`;
+  message += `👨‍💻 @testoakbot`;
+
+  return message.trim();
 };
 
 const shuffleWithCorrectIndex = (
@@ -734,14 +810,24 @@ export const sendQuizToTelegram = async (
     };
 
     // Natijalarni yuborish
+    const progressBar = generateProgressBar(testResult.percentage);
+    const timeStr = formatTime(userResult.completionTime || 0);
+    const participantName = getUserDisplayName(userInfo);
+
     await telegramAPI.sendMessage(
       config.userId,
-      `🏆 <b>Test natijalari:</b>\n\n` +
-        `✅ To‘g‘ri javoblar: ${testResult.correct} ta\n` +
-        `❌ Noto‘g‘ri javoblar: ${testResult.incorrect} ta\n` +
-        `📊 Jami: ${testResult.total} ta\n` +
-        `📈 Foiz: ${testResult.percentage.toFixed(1)}%\n\n` +
-        `🎉 Test yakunlandi!`
+      `🏆 <b>TEST NATIJALARI</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `👤 Ishtirokchi: <b>${participantName}</b>\n` +
+      `✅ To‘g‘ri javoblar: <b>${testResult.correct} ta</b>\n` +
+      `❌ Noto‘g‘ri javoblar: <b>${testResult.incorrect} ta</b>\n` +
+      `📊 Jami savollar: <b>${testResult.total} ta</b>\n` +
+      `📈 O‘zlashtirish: <b>${testResult.percentage.toFixed(1)}%</b>\n` +
+      `⏱ Sarflangan vaqt: <b>${timeStr}</b>\n` +
+      `📊 ${progressBar}\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `🎉 <i>Test muvaffaqiyatli yakunlandi!</i>\n` +
+      `👨‍💻 @testoakbot`
     );
 
     return testResult;
@@ -925,15 +1011,10 @@ export const sendGroupQuizToTelegram = async (
     };
 
     // Natijalarni yuborish
-    await telegramAPI.sendMessage(
-      groupId,
-      `🏆 <b>Test natijalari:</b>\n\n` +
-        `✅ To‘g‘ri javoblar: ${testResult.correct} ta\n` +
-        `❌ Noto‘g‘ri javoblar: ${testResult.incorrect} ta\n` +
-        `📊 Jami: ${testResult.total} ta\n` +
-        `📈 Foiz: ${testResult.percentage.toFixed(1)}%\n\n` +
-        `🎉 Test yakunlandi!`
-    );
+    const rankings = quizManager.getRankings(sessionId);
+    if (rankings.length > 0) {
+      await telegramAPI.sendMessage(groupId, generateRankingMessage(rankings));
+    }
 
     return testResult;
   } catch (error) {
