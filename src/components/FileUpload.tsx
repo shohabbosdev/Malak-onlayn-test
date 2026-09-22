@@ -33,6 +33,11 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
   const [isSending, setIsSending] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [quizRankings, setQuizRankings] = useState<UserResult[]>([]);
+  const [quizProgress, setQuizProgress] = useState<{
+    currentQuestion: number;
+    totalQuestions: number;
+    activeAnswersCount: number;
+  } | null>(null);
 
   useImperativeHandle(ref, () => ({
     validateConfig: () => !!(config.botToken && config.userId),
@@ -48,6 +53,29 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
       // Brauzer qo'llab-quvvatlamasa, tinch davom etadi
     }
     return null;
+  };
+
+  // Brauzer fonga o'tganda JavaScript taymerlari sekinlashmasligi uchun (Background Keep-Alive)
+  const startBackgroundKeepAlive = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0.00001; // Mutlaqo eshitilmaydigan darajadagi fon signali
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        return () => {
+          try {
+            osc.stop();
+            ctx.close();
+          } catch {}
+        };
+      }
+    } catch {}
+    return () => {};
   };
 
   const handleFileChange = async (file: File) => {
@@ -96,11 +124,14 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
     setIsSending(true);
     setError('');
     setSuccess('');
+    setQuizProgress(null);
 
     let wakeLockSentinel: any = null;
+    let stopKeepAlive: (() => void) | null = null;
 
     try {
       wakeLockSentinel = await acquireWakeLock();
+      stopKeepAlive = startBackgroundKeepAlive();
 
       const userIds = config.userId.includes(',')
         ? config.userId.split(',').map((id: string) => id.trim()).filter((id: string) => id)
@@ -128,7 +159,8 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
           config.userId,
           quizSettings.questionCount,
           quizSettings.intervalSeconds,
-          countdown
+          countdown,
+          (progress) => setQuizProgress(progress)
         );
         setQuizRankings([]);
       } else if (userIds.length > 1) {
@@ -165,10 +197,12 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
     } catch (err) {
       setError((err as Error).message || 'Telegram botga yuborishda xatolik yuz berdi');
     } finally {
+      if (stopKeepAlive) stopKeepAlive();
       if (wakeLockSentinel) {
         wakeLockSentinel.release().catch(() => {});
       }
       setIsSending(false);
+      setQuizProgress(null);
     }
   };
 
@@ -201,6 +235,40 @@ const FileUpload = forwardRef<FileUploadRef, FileUploadProps>(({ config }, ref) 
           settings={quizSettings}
           onSettingsChange={setQuizSettings}
         />
+      )}
+
+      {/* 2.5 Jonli Admin Monitoring paneli */}
+      {isSending && quizProgress && (
+        <div className="my-5 p-4 rounded-xl bg-slate-950/80 border border-indigo-500/30 shadow-lg animate-fadeIn">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-semibold text-white">Jonli monitoring: Guruh faolligi</span>
+            </div>
+            <span className="text-xs font-bold text-indigo-400">
+              {quizProgress.currentQuestion} / {quizProgress.totalQuestions}-savol
+            </span>
+          </div>
+
+          <div className="w-full bg-slate-800 rounded-full h-2 mb-3 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-indigo-500 to-purple-600 h-2 rounded-full transition-all duration-300"
+              style={{
+                width: `${(quizProgress.currentQuestion / quizProgress.totalQuestions) * 100}%`,
+              }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-slate-300">
+            <span>Qabul qilingan javoblar:</span>
+            <span className="font-bold text-emerald-400 text-sm">
+              {quizProgress.activeAnswersCount} nafar ishtirokchi
+            </span>
+          </div>
+        </div>
       )}
 
       {/* 3. Yuborish tugmasi */}

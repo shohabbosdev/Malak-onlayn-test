@@ -5,6 +5,8 @@ import { shuffleArray } from './formatters';
 export class MultiUserQuizManager {
   private questions: Question[] = [];
   private sessions: Map<string, QuizSession> = new Map();
+  // sessionId -> userId -> (questionIndex -> { isCorrect, responseTimeSeconds })
+  private userQuestionAnswers: Map<string, Map<string, Map<number, { isCorrect: boolean; responseTimeSeconds: number }>>> = new Map();
   private readonly maxSessions = 100;
   private readonly sessionTimeout = 3600000; // 1 soat
 
@@ -48,6 +50,7 @@ export class MultiUserQuizManager {
       const oldestSessionId = Array.from(this.sessions.entries())
         .sort((a, b) => a[1].startTime.getTime() - b[1].startTime.getTime())[0][0];
       this.sessions.delete(oldestSessionId);
+      this.userQuestionAnswers.delete(oldestSessionId);
     }
 
     const sessionId = crypto.randomUUID();
@@ -64,6 +67,7 @@ export class MultiUserQuizManager {
     };
 
     this.sessions.set(sessionId, session);
+    this.userQuestionAnswers.set(sessionId, new Map());
     return sessionId;
   }
 
@@ -82,37 +86,44 @@ export class MultiUserQuizManager {
     return this.sessions.get(sessionId) || null;
   }
 
-  // Guruh a'zolarining individual javoblarini saqlash
-  recordUserAnswer(sessionId: string, userInfo: UserInfo, questionIndex: number, isCorrect: boolean): void {
+  // Guruh a'zolarining individual javoblarini saqlash (Anti-Cheat va aniq reaktsiya vaqti bilan)
+  recordUserAnswer(
+    sessionId: string,
+    userInfo: UserInfo,
+    questionIndex: number,
+    isCorrect: boolean,
+    responseTimeSeconds: number
+  ): boolean {
     const session = this.sessions.get(sessionId);
-    if (!session) return;
+    if (!session || !session.isActive) return false;
 
+    // Ishtirokchini sessiya ro'yxatiga qo'shish
     if (!session.participants.has(userInfo.userId)) {
       session.participants.set(userInfo.userId, userInfo);
     }
 
-    if (!session.results.has(userInfo.userId)) {
-      const userResult: UserResult = {
-        correct: 0,
-        incorrect: 0,
-        total: session.questions.length,
-        percentage: 0,
-        userInfo: { ...userInfo },
-        completionTime: 0,
-      };
-      session.results.set(userInfo.userId, userResult);
+    if (!this.userQuestionAnswers.has(sessionId)) {
+      this.userQuestionAnswers.set(sessionId, new Map());
+    }
+    const sessionAnswers = this.userQuestionAnswers.get(sessionId)!;
+
+    if (!sessionAnswers.has(userInfo.userId)) {
+      sessionAnswers.set(userInfo.userId, new Map());
+    }
+    const userAnswers = sessionAnswers.get(userInfo.userId)!;
+
+    // ANTI-CHEAT: Bir savolga faqat birinchi berilgan javob qabul qilinadi
+    if (userAnswers.has(questionIndex)) {
+      return false;
     }
 
-    const currentResult = session.results.get(userInfo.userId)!;
-    if (isCorrect) {
-      currentResult.correct += 1;
-    } else {
-      currentResult.incorrect += 1;
-    }
-    currentResult.percentage = session.questions.length > 0
-      ? (currentResult.correct / session.questions.length) * 100
-      : 0;
-    currentResult.completionTime = Math.floor((Date.now() - userInfo.startTime.getTime()) / 1000);
+    const safeResponseTime = Math.max(0.1, Math.round(responseTimeSeconds * 10) / 10);
+    userAnswers.set(questionIndex, {
+      isCorrect,
+      responseTimeSeconds: safeResponseTime,
+    });
+
+    return true;
   }
 
   setSessionResults(sessionId: string, results: Map<string, Map<number, boolean>>): void {
@@ -141,18 +152,48 @@ export class MultiUserQuizManager {
     this.calculateRankings(sessionId);
   }
 
-  // Sessiyani to'liq yakunlash va reytingni chiqarish
-  finalizeSession(sessionId: string): UserResult[] {
+  // Sessiyani to'liq yakunlash va reytingni chiqarish (barcha savollar tekshirilib, jarimalar hisoblanadi)
+  finalizeSession(sessionId: string, defaultTimeoutSeconds: number = 30): UserResult[] {
     const session = this.sessions.get(sessionId);
     if (!session) return [];
 
     const totalQuestions = session.questions.length;
-    for (const [, result] of session.results.entries()) {
-      result.total = totalQuestions;
-      result.incorrect = totalQuestions - result.correct;
-      result.percentage = totalQuestions > 0 ? (result.correct / totalQuestions) * 100 : 0;
-      result.userInfo.endTime = new Date();
-      result.userInfo.isActive = false;
+    const sessionAnswers = this.userQuestionAnswers.get(sessionId);
+
+    for (const [userId, participantInfo] of session.participants.entries()) {
+      const userAnswers = sessionAnswers?.get(userId);
+      let correct = 0;
+      let totalResponseTime = 0;
+
+      for (let qIdx = 0; qIdx < totalQuestions; qIdx++) {
+        if (userAnswers && userAnswers.has(qIdx)) {
+          const ans = userAnswers.get(qIdx)!;
+          if (ans.isCorrect) correct += 1;
+          totalResponseTime += ans.responseTimeSeconds;
+        } else {
+          // Javob berilmagan (o'tkazib yuborilgan) savol uchun maksimal interval jarima qilinadi
+          totalResponseTime += defaultTimeoutSeconds;
+        }
+      }
+
+      const incorrect = totalQuestions - correct;
+      const percentage = totalQuestions > 0 ? (correct / totalQuestions) * 100 : 0;
+      const completionTime = Math.round(totalResponseTime * 10) / 10;
+
+      const userResult: UserResult = {
+        correct,
+        incorrect,
+        total: totalQuestions,
+        percentage,
+        userInfo: {
+          ...participantInfo,
+          endTime: new Date(),
+          isActive: false,
+        },
+        completionTime,
+      };
+
+      session.results.set(userId, userResult);
     }
 
     this.calculateRankings(sessionId);
@@ -167,8 +208,12 @@ export class MultiUserQuizManager {
     if (!session) return;
 
     const sortedResults = Array.from(session.results.values()).sort((a: UserResult, b: UserResult) => {
+      // 1. To'g'ri javoblar soni bo'yicha kamayish tartibida
       if (b.correct !== a.correct) return b.correct - a.correct;
-      return a.completionTime - b.completionTime;
+      // 2. Ballar teng bo'lsa, sarflangan vaqt (reaktsiya tezligi) bo'yicha o'sish tartibida (kam vaqt sarflagan birinchi)
+      if (a.completionTime !== b.completionTime) return a.completionTime - b.completionTime;
+      // 3. Ikkalasi ham teng bo'lsa, barqaror tartib
+      return a.userInfo.userId.localeCompare(b.userInfo.userId);
     });
 
     sortedResults.forEach((result, index) => {
@@ -193,6 +238,7 @@ export class MultiUserQuizManager {
     for (const [sessionId, session] of this.sessions.entries()) {
       if (now - session.startTime.getTime() > this.sessionTimeout) {
         this.sessions.delete(sessionId);
+        this.userQuestionAnswers.delete(sessionId);
         console.log(`Eski sessiya o'chirildi: ${sessionId}`);
       }
     }

@@ -128,26 +128,46 @@ export const generateExcelReport = (rankings: UserResult[]): Blob => {
   const wb = XLSX.utils.book_new();
   
   // Prepare data for export
-  const data = rankings.map((result, index) => ({
-    'O\'rin': index + 1,
-    'Foydalanuvchi': result.userInfo?.firstName && result.userInfo?.lastName 
+  const data = rankings.map((result, index) => {
+    const medal = index === 0 ? '🥇 1' : index === 1 ? '🥈 2' : index === 2 ? '🥉 3' : `${index + 1}`;
+    const name = result.userInfo?.firstName && result.userInfo?.lastName 
       ? `${result.userInfo.firstName} ${result.userInfo.lastName}` 
-      : result.userInfo?.username 
-        ? `@${result.userInfo.username}` 
-        : `User${result.userInfo?.userId?.slice(-4)}`,
-    'To\'g\'ri javoblar': result.correct,
-    'Noto\'g\'ri javoblar': result.incorrect,
-    'Jami savollar': result.total,
-    'Foiz': `${result.percentage.toFixed(1)}%`,
-    'Vaqt (soniya)': result.completionTime,
-    'Telegram ID': result.userInfo?.userId || 'Noma\'lum'
-  }));
+      : result.userInfo?.firstName ||
+        (result.userInfo?.username 
+          ? `@${result.userInfo.username}` 
+          : `User${result.userInfo?.userId?.slice(-4)}`);
+
+    return {
+      'O\'rin': medal,
+      'Foydalanuvchi': name,
+      'To\'g\'ri javoblar': result.correct,
+      'Noto\'g\'ri javoblar': result.incorrect,
+      'Jami savollar': result.total,
+      'O\'zlashtirish': `${result.percentage.toFixed(1)}%`,
+      'Sarflangan vaqt (sek)': result.completionTime,
+      'Telegram ID': result.userInfo?.userId || 'Noma\'lum',
+      'Username': result.userInfo?.username ? `@${result.userInfo.username}` : '-'
+    };
+  });
 
   // Create worksheet
   const ws = XLSX.utils.json_to_sheet(data);
   
+  // Set column widths
+  ws['!cols'] = [
+    { wch: 8 },  // O'rin
+    { wch: 25 }, // Foydalanuvchi
+    { wch: 16 }, // To'g'ri
+    { wch: 18 }, // Noto'g'ri
+    { wch: 14 }, // Jami
+    { wch: 15 }, // Foiz
+    { wch: 22 }, // Vaqt
+    { wch: 16 }, // Telegram ID
+    { wch: 18 }, // Username
+  ];
+
   // Add worksheet to workbook
-  XLSX.utils.book_append_sheet(wb, ws, 'Natijalar');
+  XLSX.utils.book_append_sheet(wb, ws, 'Reyting_Natijalari');
   
   // Generate buffer
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

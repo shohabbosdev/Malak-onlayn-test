@@ -72,6 +72,7 @@ export interface TelegramAPIPayload {
   timeout?: number;
   allowed_updates?: string[];
   offset?: number;
+  limit?: number;
   message_id?: number;
 }
 

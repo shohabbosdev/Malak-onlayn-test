@@ -217,6 +217,7 @@ export class TelegramAPI {
     const payload: TelegramAPIPayload = {
       timeout: timeoutSeconds,
       allowed_updates: allowedUpdates || ['poll_answer'],
+      limit: 100,
     };
     if (offset) {
       payload.offset = offset;

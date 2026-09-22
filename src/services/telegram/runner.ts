@@ -109,7 +109,8 @@ export const sendGroupQuizToTelegram = async (
   groupId: string,
   requestedCount: number,
   intervalSeconds: number = 45,
-  countdownSeconds: number = 5
+  countdownSeconds: number = 5,
+  onProgress?: (progress: { currentQuestion: number; totalQuestions: number; activeAnswersCount: number }) => void
 ): Promise<TestResult> => {
   if (!config.botToken) throw new Error('Bot token majburiy');
   if (!groupId) throw new Error('Guruh ID majburiy');
@@ -131,6 +132,12 @@ export const sendGroupQuizToTelegram = async (
     await runCountdown(telegramAPI, groupId, countdownSeconds, requestedCount, safeInterval);
 
     for (let i = 0; i < session.questions.length; i++) {
+      onProgress?.({
+        currentQuestion: i + 1,
+        totalQuestions: session.questions.length,
+        activeAnswersCount: 0,
+      });
+
       const { question, options, correctAnswer, rowNumber } = session.questions[i];
       const shuffledData = shuffleWithCorrectIndex(options, correctAnswer);
 
@@ -150,11 +157,18 @@ export const sendGroupQuizToTelegram = async (
         shuffledData.correctIndex,
         safeInterval,
         sessionId,
-        quizManager
+        quizManager,
+        (currentAnswersCount) => {
+          onProgress?.({
+            currentQuestion: i + 1,
+            totalQuestions: session.questions.length,
+            activeAnswersCount: currentAnswersCount,
+          });
+        }
       );
     }
 
-    const rankings = quizManager.finalizeSession(sessionId);
+    const rankings = quizManager.finalizeSession(sessionId, safeInterval);
 
     if (rankings.length > 0) {
       await telegramAPI.sendMessage(groupId, generateRankingMessage(rankings));

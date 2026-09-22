@@ -82,14 +82,15 @@ export class PollResultsCollector {
     return allUsersAnswered();
   }
 
-  // Guruhdagi poll uchun a'zolarning javoblarini yig'ish (qat'iy taymer asosida)
+  // Guruhdagi poll uchun a'zolarning javoblarini yig'ish (Queue Draining & Real-time Progress)
   async waitForGroupPollAnswers(
     pollId: string,
     questionIndex: number,
     correctOptionId: number,
     timeoutSeconds: number,
     sessionId: string,
-    quizManager: MultiUserQuizManager
+    quizManager: MultiUserQuizManager,
+    onAnswerReceived?: (answersCount: number) => void
   ): Promise<number> {
     const startTime = Date.now();
     const timeoutMs = timeoutSeconds * 1000;
@@ -108,27 +109,44 @@ export class PollResultsCollector {
           if (update.poll_answer) {
             const { user, poll_id, option_ids } = update.poll_answer;
             if (poll_id === pollId) {
+              // Agar foydalanuvchi ovozini bekor qilgan bo'lsa (bo'sh option_ids), e'tiborga olinmaydi
+              if (!option_ids || option_ids.length === 0) continue;
+
               const userId = user.id.toString();
               const isCorrect = option_ids.includes(correctOptionId);
+              const elapsedSeconds = Math.max(0.1, (Date.now() - startTime) / 1000);
+              const responseTime = Math.min(elapsedSeconds, timeoutSeconds);
 
               const userInfo: UserInfo = {
                 userId,
                 username: user.username,
                 firstName: user.first_name,
                 lastName: user.last_name,
-                startTime: new Date(),
+                startTime: new Date(startTime),
                 isActive: true,
               };
 
-              quizManager.recordUserAnswer(sessionId, userInfo, questionIndex, isCorrect);
-              answersCount++;
-              console.log(`Guruh a'zosi ${user.first_name || userId} javob berdi (${isCorrect ? 'to‘g‘ri' : 'noto‘g‘ri'})`);
+              const recorded = quizManager.recordUserAnswer(
+                sessionId,
+                userInfo,
+                questionIndex,
+                isCorrect,
+                responseTime
+              );
+
+              if (recorded) {
+                answersCount++;
+                onAnswerReceived?.(answersCount);
+                console.log(`Guruh a'zosi ${user.first_name || userId} javob berdi (${isCorrect ? 'to‘g‘ri' : 'noto‘g‘ri'}, ${responseTime.toFixed(1)}s)`);
+              }
             }
           }
           offset = update.update_id + 1;
         }
 
-        if (Date.now() - startTime < timeoutMs) {
+        // QUEUE DRAINING: Agar yangilanishlar ko'p bo'lsa (50+), kutmasdan darhol keyingi qismni tortib oladi
+        const isQueueBusy = updates.length >= 50;
+        if (!isQueueBusy && Date.now() - startTime < timeoutMs) {
           await delay(200);
         }
       } catch (error) {

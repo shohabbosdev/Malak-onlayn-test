@@ -45,9 +45,13 @@ export const generateProgressBar = (percentage: number, totalBlocks: number = 10
 };
 
 export const formatTime = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const safeSeconds = Math.max(0, seconds);
+  if (safeSeconds < 60) {
+    return `${safeSeconds.toFixed(1)}s`;
+  }
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = (safeSeconds % 60).toFixed(1);
+  return `${mins}d ${secs}s`;
 };
 
 export const getUserDisplayName = (userInfo: UserInfo): string => {
