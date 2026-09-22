@@ -173,6 +173,65 @@ class PollResultsCollector {
     this.userStates.delete(userId);
   }
 
+  // Guruhdagi poll uchun a'zolarning javoblarini yig'ish (qat'iy taymer asosida)
+  async waitForGroupPollAnswers(
+    pollId: string,
+    questionIndex: number,
+    correctOptionId: number,
+    timeoutSeconds: number,
+    sessionId: string,
+    quizManager: MultiUserQuizManager
+  ): Promise<number> {
+    const startTime = Date.now();
+    const timeoutMs = timeoutSeconds * 1000;
+    let offset: number | undefined = undefined;
+    let answersCount = 0;
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const remainingMs = timeoutMs - (Date.now() - startTime);
+        if (remainingMs <= 0) break;
+
+        // Long-polling kutishini maksimal 1 soniya qilamiz (tezkor aylanib, vaqtida chiqishi uchun)
+        const pollTimeout = Math.min(1, Math.max(1, Math.ceil(remainingMs / 1000)));
+        const updates = await this.telegramAPI.getUpdates(offset, ['poll_answer'], pollTimeout);
+
+        for (const update of updates) {
+          if (update.poll_answer) {
+            const { user, poll_id, option_ids } = update.poll_answer;
+            if (poll_id === pollId) {
+              const userId = user.id.toString();
+              const isCorrect = option_ids.includes(correctOptionId);
+
+              const userInfo: UserInfo = {
+                userId,
+                username: user.username,
+                firstName: user.first_name,
+                lastName: user.last_name,
+                startTime: new Date(),
+                isActive: true,
+              };
+
+              quizManager.recordUserAnswer(sessionId, userInfo, questionIndex, isCorrect);
+              answersCount++;
+              console.log(`Guruh a'zosi ${user.first_name || userId} javob berdi (${isCorrect ? 'to‘g‘ri' : 'noto‘g‘ri'})`);
+            }
+          }
+          offset = update.update_id + 1;
+        }
+
+        if (Date.now() - startTime < timeoutMs) {
+          await delay(200);
+        }
+      } catch (error) {
+        console.warn('getUpdates xatosi:', error);
+        await delay(500);
+      }
+    }
+
+    return answersCount;
+  }
+
   // Eski holatlarni tozalash
   private cleanupOldStates(): void {
     const now = Date.now();
@@ -264,7 +323,8 @@ class TelegramAPI {
     options: string[],
     correctOptionId: number,
     openPeriod: number = 20,
-    rowNumber: number
+    rowNumber: number,
+    isAnonymous: boolean = false
   ): Promise<string> {
     await this.rateLimiter.waitIfNeeded();
 
@@ -335,8 +395,9 @@ class TelegramAPI {
       throw new Error(`To'g'ri javob indeksi noto'g'ri: ${correctOptionId}`);
     }
 
-    // Kanallar va guruhlarga yuboriladigan pollar anonim bo'lishi kerak
-    const isChannelOrGroup = chatId.startsWith('@') || chatId.startsWith('-100') || chatId.startsWith('-');
+    // Kanallarda faqat anonim poll bo'lishi mumkin (Telegram cheklovi). Guruh va foydalanuvchilar uchun esa ochiq poll!
+    const isChannel = chatId.startsWith('@');
+    const finalIsAnonymous = isAnonymous || isChannel;
 
     const payload = {
       chat_id: chatId,
@@ -344,7 +405,7 @@ class TelegramAPI {
       options: sanitizedOptions,
       type: 'quiz',
       correct_option_id: correctOptionId,
-      is_anonymous: isChannelOrGroup, // Kanallar va guruhlar uchun true, oddiy foydalanuvchilar uchun false
+      is_anonymous: finalIsAnonymous,
       protect_content: true,
       open_period: Math.min(Math.max(openPeriod, 5), 200),
       explanation: `Bu savol Excel faylining ${rowNumber}-qatorida joylashgan.`,
@@ -382,17 +443,21 @@ class TelegramAPI {
     }
   }
 
-  async getUpdates(offset?: number, allowedUpdates?: string[]): Promise<Array<{
+  async getUpdates(
+    offset?: number,
+    allowedUpdates?: string[],
+    timeoutSeconds: number = 1
+  ): Promise<Array<{
     update_id: number;
     poll_answer?: {
-      user: { id: number };
+      user: { id: number; first_name?: string; last_name?: string; username?: string };
       poll_id: string;
       option_ids: number[];
     };
   }>> {
     await this.rateLimiter.waitIfNeeded();
     const payload: TelegramAPIPayload = {
-      timeout: 30,
+      timeout: timeoutSeconds,
       allowed_updates: allowedUpdates || ['poll_answer'],
     };
     if (offset) {
@@ -401,7 +466,7 @@ class TelegramAPI {
     const response = await this.makeRequestWithRetry<Array<{
       update_id: number;
       poll_answer?: {
-        user: { id: number };
+        user: { id: number; first_name?: string; last_name?: string; username?: string };
         poll_id: string;
         option_ids: number[];
       };
@@ -552,6 +617,39 @@ export class MultiUserQuizManager {
     return this.sessions.get(sessionId) || null;
   }
 
+  // Guruh a'zolarining individual javoblarini saqlash
+  recordUserAnswer(sessionId: string, userInfo: UserInfo, questionIndex: number, isCorrect: boolean): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
+    if (!session.participants.has(userInfo.userId)) {
+      session.participants.set(userInfo.userId, userInfo);
+    }
+
+    if (!session.results.has(userInfo.userId)) {
+      const userResult: UserResult = {
+        correct: 0,
+        incorrect: 0,
+        total: session.questions.length,
+        percentage: 0,
+        userInfo: { ...userInfo },
+        completionTime: 0,
+      };
+      session.results.set(userInfo.userId, userResult);
+    }
+
+    const currentResult = session.results.get(userInfo.userId)!;
+    if (isCorrect) {
+      currentResult.correct += 1;
+    } else {
+      currentResult.incorrect += 1;
+    }
+    currentResult.percentage = session.questions.length > 0
+      ? (currentResult.correct / session.questions.length) * 100
+      : 0;
+    currentResult.completionTime = Math.floor((Date.now() - userInfo.startTime.getTime()) / 1000);
+  }
+
   setSessionResults(sessionId: string, results: Map<string, Map<number, boolean>>): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
@@ -569,15 +667,34 @@ export class MultiUserQuizManager {
         incorrect: total - correct,
         total,
         percentage: total > 0 ? (correct / total) * 100 : 0,
-        userInfo: { ...userInfo, endTime: new Date(), isActive: false },
+        userInfo: { ...userInfo, endTime: new Date(), isActive: true },
         completionTime,
       };
       session.results.set(userId, userResult);
-    };
+    }
+
+    this.calculateRankings(sessionId);
+  }
+
+  // Sessiyani to'liq yakunlash va reytingni chiqarish
+  finalizeSession(sessionId: string): UserResult[] {
+    const session = this.sessions.get(sessionId);
+    if (!session) return [];
+
+    const totalQuestions = session.questions.length;
+    for (const [, result] of session.results.entries()) {
+      result.total = totalQuestions;
+      result.incorrect = totalQuestions - result.correct;
+      result.percentage = totalQuestions > 0 ? (result.correct / totalQuestions) * 100 : 0;
+      result.userInfo.endTime = new Date();
+      result.userInfo.isActive = false;
+    }
 
     this.calculateRankings(sessionId);
     session.isActive = false;
     session.endTime = new Date();
+
+    return this.getRankings(sessionId);
   }
 
   private calculateRankings(sessionId: string): void {
@@ -609,7 +726,8 @@ export class MultiUserQuizManager {
   private cleanupOldSessions(): void {
     const now = Date.now();
     for (const [sessionId, session] of this.sessions.entries()) {
-      if (now - session.startTime.getTime() > this.sessionTimeout || !session.isActive) {
+      // Faqat sessionTimeout (1 soat) dan oshgan sessiyalarni tozalash
+      if (now - session.startTime.getTime() > this.sessionTimeout) {
         this.sessions.delete(sessionId);
         console.log(`Eski sessiya o'chirildi: ${sessionId}`);
       }
@@ -891,7 +1009,8 @@ export const sendChannelQuizToTelegram = async (
         shuffledData.options,
         shuffledData.correctIndex,
         intervalSeconds,
-        rowNumber
+        rowNumber,
+        true // Kanal uchun anonim poll
       );
       
       // Har bir savol orasida biroz vaqt kutamiz
@@ -952,10 +1071,6 @@ export const sendGroupQuizToTelegram = async (
     const sessionId = quizManager.createSession(requestedCount);
     const session = quizManager.getSession(sessionId)!;
 
-    // Foydalanuvchini qo‘shish
-    const userInfo = await telegramAPI.getUserInfo(groupId);
-    await quizManager.addParticipant(sessionId, userInfo);
-
     // Guruhga boshlang‘ich xabar (sozlamalar bilan)
     await telegramAPI.sendMessage(
       groupId,
@@ -967,7 +1082,7 @@ export const sendGroupQuizToTelegram = async (
     );
     await delay(2000);
 
-    // Savollarni yuborish - har bir savol foydalanuvchi javob bergandan keyin
+    // Savollarni yuborish
     for (let i = 0; i < session.questions.length; i++) {
       const { question, options, correctAnswer, rowNumber } = session.questions[i];
       const shuffledData = shuffleWithCorrectIndex(options, correctAnswer);
@@ -978,43 +1093,43 @@ export const sendGroupQuizToTelegram = async (
         shuffledData.options,
         shuffledData.correctIndex,
         safeInterval,
-        rowNumber
+        rowNumber,
+        false // Guruhda ochiq (anonim bo'lmagan) poll
       );
-      // Foydalanuvchi uchun kutish holatini o'rnatish
-      pollCollector.setUserPollState(groupId, pollId, i, shuffledData.correctIndex);
 
-      // Har bir savol uchun foydalanuvchi javobini kutish
-      await pollCollector.waitForSinglePollResult(
-        [groupId],
-        safeInterval
+      // Belgilangan vaqt davomida javoblarni yig'ish (vaqt tugashi bilan darhol keyingi savolga o'tadi)
+      await pollCollector.waitForGroupPollAnswers(
+        pollId,
+        i,
+        shuffledData.correctIndex,
+        safeInterval,
+        sessionId,
+        quizManager
       );
-      
-      // Natijalarni olish
-      const results = pollCollector.getResults();
-      
-      // Natijalarni saqlash
-      quizManager.setSessionResults(sessionId, results);
     }
 
-    // Barcha savollar tugadi, yakuniy natijalarni olish
-    // Natijalar har bir savol uchun allaqachon saqlangan
-
-    // Natijalarni tayyorlash
-    const userResult = quizManager.getRankings(sessionId)[0];
-    if (!userResult) throw new Error('Natijalar topilmadi');
-
-    const testResult: TestResult = {
-      correct: userResult.correct,
-      incorrect: userResult.incorrect,
-      total: userResult.total,
-      percentage: userResult.percentage,
-    };
+    // Barcha savollar tugadi, yakuniy natijalarni hisoblash
+    const rankings = quizManager.finalizeSession(sessionId);
 
     // Natijalarni yuborish
-    const rankings = quizManager.getRankings(sessionId);
     if (rankings.length > 0) {
       await telegramAPI.sendMessage(groupId, generateRankingMessage(rankings));
+    } else {
+      await telegramAPI.sendMessage(
+        groupId,
+        `🏁 <b>Test yakunlandi!</b>\n\n` +
+        `Ushbu testda hech kim javob bermadi.\n` +
+        `Keyingi testlarda faolroq qatnashing! 😊`
+      );
     }
+
+    const topResult = rankings[0];
+    const testResult: TestResult = {
+      correct: topResult ? topResult.correct : 0,
+      incorrect: topResult ? topResult.incorrect : 0,
+      total: session.questions.length,
+      percentage: topResult ? topResult.percentage : 0,
+    };
 
     return testResult;
   } catch (error) {
